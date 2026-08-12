@@ -1,5 +1,7 @@
 create extension if not exists pgcrypto;
 
+create schema if not exists private;
+
 do $$
 begin
   create type public.workspace_role as enum ('owner', 'admin', 'member');
@@ -43,7 +45,7 @@ create table if not exists public.workspace_members (
   primary key (workspace_id, user_id)
 );
 
-create or replace function public.is_workspace_member(target_workspace_id uuid)
+create or replace function private.is_workspace_member(target_workspace_id uuid)
 returns boolean
 language sql
 stable
@@ -54,11 +56,11 @@ as $$
     select 1
     from public.workspace_members wm
     where wm.workspace_id = target_workspace_id
-      and wm.user_id = auth.uid()
+      and wm.user_id = (select auth.uid())
   );
 $$;
 
-create or replace function public.workspace_role_for(target_workspace_id uuid)
+create or replace function private.workspace_role_for(target_workspace_id uuid)
 returns public.workspace_role
 language sql
 stable
@@ -68,8 +70,11 @@ as $$
   select wm.role
   from public.workspace_members wm
   where wm.workspace_id = target_workspace_id
-    and wm.user_id = auth.uid();
+    and wm.user_id = (select auth.uid());
 $$;
+
+revoke execute on function private.is_workspace_member(uuid) from public, anon, authenticated, service_role;
+revoke execute on function private.workspace_role_for(uuid) from public, anon, authenticated, service_role;
 
 create table if not exists public.all_leads_mmp (
   id uuid primary key default gen_random_uuid(),
@@ -107,6 +112,9 @@ create unique index if not exists all_leads_mmp_workspace_name_company_uidx
   on public.all_leads_mmp (workspace_id, name_company_normalized)
   where linkedin_url_normalized is null and name_company_normalized is not null;
 
+create index if not exists all_leads_mmp_workspace_email_status_idx
+  on public.all_leads_mmp (workspace_id, email_status);
+
 create table if not exists public.lead_imports (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
@@ -139,6 +147,15 @@ create table if not exists public.lead_import_rows (
   foreign key (lead_id, workspace_id) references public.all_leads_mmp(id, workspace_id),
   unique (import_id, row_number)
 );
+
+create index if not exists workspace_members_user_workspace_idx
+  on public.workspace_members (user_id, workspace_id);
+
+create index if not exists lead_imports_workspace_status_idx
+  on public.lead_imports (workspace_id, status);
+
+create index if not exists lead_import_rows_workspace_import_idx
+  on public.lead_import_rows (workspace_id, import_id);
 
 create table if not exists public.enrichment_batches (
   id uuid primary key default gen_random_uuid(),
@@ -174,6 +191,15 @@ create table if not exists public.enrichment_items (
   unique (batch_id, lead_id)
 );
 
+create index if not exists enrichment_batches_workspace_status_idx
+  on public.enrichment_batches (workspace_id, status);
+
+create index if not exists enrichment_items_workspace_status_lease_idx
+  on public.enrichment_items (workspace_id, status, leased_until);
+
+create index if not exists enrichment_items_workspace_lead_idx
+  on public.enrichment_items (workspace_id, lead_id);
+
 create table if not exists public.apify_runs (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
@@ -188,6 +214,9 @@ create table if not exists public.apify_runs (
   completed_at timestamptz,
   unique (apify_run_id)
 );
+
+create index if not exists apify_runs_workspace_item_idx
+  on public.apify_runs (workspace_id, enrichment_item_id);
 
 alter table public.workspaces enable row level security;
 alter table public.workspace_members enable row level security;
@@ -211,94 +240,94 @@ drop policy if exists "workspace members can view workspaces" on public.workspac
 create policy "workspace members can view workspaces"
 on public.workspaces for select
 to authenticated
-using (public.is_workspace_member(id));
+using (private.is_workspace_member(id));
 
 drop policy if exists "workspace members can view memberships" on public.workspace_members;
 create policy "workspace members can view memberships"
 on public.workspace_members for select
 to authenticated
-using (public.is_workspace_member(workspace_id));
+using (private.is_workspace_member(workspace_id));
 
 drop policy if exists "owners can manage memberships" on public.workspace_members;
 create policy "owners can manage memberships"
 on public.workspace_members for all
 to authenticated
-using (public.workspace_role_for(workspace_id) = 'owner')
-with check (public.workspace_role_for(workspace_id) = 'owner');
+using (private.workspace_role_for(workspace_id) = 'owner')
+with check (private.workspace_role_for(workspace_id) = 'owner');
 
 drop policy if exists "members can view leads" on public.all_leads_mmp;
 create policy "members can view leads"
 on public.all_leads_mmp for select
 to authenticated
-using (public.is_workspace_member(workspace_id));
+using (private.is_workspace_member(workspace_id));
 
 drop policy if exists "admins can insert leads" on public.all_leads_mmp;
 create policy "admins can insert leads"
 on public.all_leads_mmp for insert
 to authenticated
-with check (public.workspace_role_for(workspace_id) in ('owner', 'admin'));
+with check (private.workspace_role_for(workspace_id) in ('owner', 'admin'));
 
 drop policy if exists "admins can update leads" on public.all_leads_mmp;
 create policy "admins can update leads"
 on public.all_leads_mmp for update
 to authenticated
-using (public.workspace_role_for(workspace_id) in ('owner', 'admin'))
-with check (public.workspace_role_for(workspace_id) in ('owner', 'admin'));
+using (private.workspace_role_for(workspace_id) in ('owner', 'admin'))
+with check (private.workspace_role_for(workspace_id) in ('owner', 'admin'));
 
 drop policy if exists "members can view imports" on public.lead_imports;
 create policy "members can view imports"
 on public.lead_imports for select
 to authenticated
-using (public.is_workspace_member(workspace_id));
+using (private.is_workspace_member(workspace_id));
 
 drop policy if exists "admins can manage imports" on public.lead_imports;
 create policy "admins can manage imports"
 on public.lead_imports for all
 to authenticated
-using (public.workspace_role_for(workspace_id) in ('owner', 'admin'))
-with check (public.workspace_role_for(workspace_id) in ('owner', 'admin'));
+using (private.workspace_role_for(workspace_id) in ('owner', 'admin'))
+with check (private.workspace_role_for(workspace_id) in ('owner', 'admin'));
 
 drop policy if exists "members can view import rows" on public.lead_import_rows;
 create policy "members can view import rows"
 on public.lead_import_rows for select
 to authenticated
-using (public.is_workspace_member(workspace_id));
+using (private.is_workspace_member(workspace_id));
 
 drop policy if exists "admins can manage import rows" on public.lead_import_rows;
 create policy "admins can manage import rows"
 on public.lead_import_rows for all
 to authenticated
-using (public.workspace_role_for(workspace_id) in ('owner', 'admin'))
-with check (public.workspace_role_for(workspace_id) in ('owner', 'admin'));
+using (private.workspace_role_for(workspace_id) in ('owner', 'admin'))
+with check (private.workspace_role_for(workspace_id) in ('owner', 'admin'));
 
 drop policy if exists "members can view enrichment batches" on public.enrichment_batches;
 create policy "members can view enrichment batches"
 on public.enrichment_batches for select
 to authenticated
-using (public.is_workspace_member(workspace_id));
+using (private.is_workspace_member(workspace_id));
 
 drop policy if exists "admins can manage enrichment batches" on public.enrichment_batches;
 create policy "admins can manage enrichment batches"
 on public.enrichment_batches for all
 to authenticated
-using (public.workspace_role_for(workspace_id) in ('owner', 'admin'))
-with check (public.workspace_role_for(workspace_id) in ('owner', 'admin'));
+using (private.workspace_role_for(workspace_id) in ('owner', 'admin'))
+with check (private.workspace_role_for(workspace_id) in ('owner', 'admin'));
 
 drop policy if exists "members can view enrichment items" on public.enrichment_items;
 create policy "members can view enrichment items"
 on public.enrichment_items for select
 to authenticated
-using (public.is_workspace_member(workspace_id));
+using (private.is_workspace_member(workspace_id));
 
 drop policy if exists "admins can manage enrichment items" on public.enrichment_items;
 create policy "admins can manage enrichment items"
 on public.enrichment_items for all
 to authenticated
-using (public.workspace_role_for(workspace_id) in ('owner', 'admin'))
-with check (public.workspace_role_for(workspace_id) in ('owner', 'admin'));
+using (private.workspace_role_for(workspace_id) in ('owner', 'admin'))
+with check (private.workspace_role_for(workspace_id) in ('owner', 'admin'));
 
 drop policy if exists "members can view apify runs" on public.apify_runs;
 create policy "members can view apify runs"
 on public.apify_runs for select
 to authenticated
-using (public.is_workspace_member(workspace_id));
+using (private.is_workspace_member(workspace_id));
