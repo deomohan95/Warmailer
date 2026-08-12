@@ -9,12 +9,15 @@ Thor owns the isolated mail worker under `apps/worker`.
 
 ## Coordination needs
 
-- Thor worktree creation is blocked until the repository has a committed baseline HEAD. Current checkout reports `master` with an all-zero HEAD, so `feat/mail-worker` cannot be created safely yet.
+- Thor worktree is available at `C:\Users\admin\Desktop\Warmailer-thor` on branch `feat/mail-worker`.
+- Root owns integration, commits, checkpoints, remote configuration, and pushes. Thor does not push directly.
 - Gate A still owns root manifests, shared contracts, and lockfiles. Thor should keep foundation work under `apps/worker/` until the integrator freezes shared contracts.
-- Queue, database, and real Zoho connectivity are intentionally deferred. This slice only adds local config parsing, mailbox secret encryption, and redacted logging tests/implementation.
+- Queue and database dependencies remain deferred until root/integrator approves dependency changes.
+- Mocked Zoho connectivity classification now exists using Node.js built-ins only. Real SMTP/IMAP adapters still require `nodemailer` and `imapflow` in `apps/worker/package.json`.
 
 ## Safety boundary
 
 - Tests use deterministic in-memory values only.
 - No SMTP, IMAP, Supabase, Apify, or other network connection is made by this slice.
+- Zoho connectivity tests use injected mock connectors only; no message is sent.
 - No environment file is read by tests or production modules; callers must explicitly pass an environment object to `loadConfig`.
