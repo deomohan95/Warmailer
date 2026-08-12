@@ -33,17 +33,25 @@ export function InboxWorkspace({ threads, mailboxes }: { threads: InboxThread[];
   const mailbox = selected ? mailboxes.find((item) => item.mailboxId === selected.mailboxId) : undefined;
 
   if (threads.length === 0) {
+    const hasMailbox = mailboxes.length > 0;
+
     return (
       <Card>
         <div className="card-body card-body-flush">
           <EmptyState
             icon={<IconInbox />}
             title="No replies synced yet"
-            description="Connect Zoho mailboxes to receive replies here. Every reply from every mailbox lands in this one inbox."
+            description={
+              hasMailbox
+                ? "A mailbox is connected. Replies will appear here after the Zoho inbox sync worker is wired and has pulled messages."
+                : "Connect Zoho mailboxes to receive replies here. Every reply from every mailbox lands in this one inbox."
+            }
             action={
-              <Link href="/mailboxes" className="btn btn-primary">
-                Connect a mailbox
-              </Link>
+              hasMailbox ? undefined : (
+                <Link href="/mailboxes" className="btn btn-primary">
+                  Connect a mailbox
+                </Link>
+              )
             }
           />
         </div>

@@ -15,10 +15,10 @@ export default async function LeadsPage() {
         title="Leads"
         description="Every lead in this workspace, with its import origin and email-enrichment state. Importing and finding emails both happen here."
         actions={
-          <button type="button" className="btn btn-primary">
+          <label htmlFor="lead-csv-file" className="btn btn-primary">
             <IconUpload />
             Import CSV
-          </button>
+          </label>
         }
       />
       <LeadsWorkspace leads={leads} imports={leadImports} />

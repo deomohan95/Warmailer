@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { IconLeads, IconSearch, IconUpload } from "@/components/icons";
 import { Card, CardHead, EmptyState, Notice, StatusPill } from "@/components/ui/primitives";
@@ -27,12 +28,19 @@ function unique(values: string[]): string[] {
 }
 
 export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: LeadImport[] }) {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<LeadStatus | "all">("all");
   const [industry, setIndustry] = useState("all");
   const [location, setLocation] = useState("all");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [allFilteredSelected, setAllFilteredSelected] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [enriching, setEnriching] = useState(false);
+  const [enrichmentMessage, setEnrichmentMessage] = useState<string | null>(null);
+  const [enrichmentError, setEnrichmentError] = useState<string | null>(null);
 
   const industries = useMemo(() => unique(leads.map((lead) => lead.industry)), [leads]);
   const locations = useMemo(() => unique(leads.map((lead) => lead.location)), [leads]);
@@ -75,11 +83,106 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
     setAllFilteredSelected(false);
   }
 
+  async function importCsv(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setImporting(true);
+    setImportMessage(null);
+    setImportError(null);
+
+    const form = new FormData();
+    form.append("file", file);
+
+    const response = await fetch("/api/leads/import", {
+      method: "POST",
+      body: form,
+    });
+
+    setImporting(false);
+
+    const result = (await response.json().catch(() => null)) as
+      | { inserted?: number; updated?: number; rejected?: number; error?: string }
+      | null;
+
+    if (!response.ok) {
+      setImportError(result?.error ?? "Lead import failed");
+      return;
+    }
+
+    setImportMessage(
+      `${result?.inserted ?? 0} inserted, ${result?.updated ?? 0} updated, ${result?.rejected ?? 0} rejected.`,
+    );
+    router.refresh();
+  }
+
+  async function findEmails() {
+    setEnriching(true);
+    setEnrichmentMessage(null);
+    setEnrichmentError(null);
+
+    const response = await fetch("/api/enrichment-batches", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ leadIds: eligible.map((lead) => lead.leadId) }),
+    });
+
+    setEnriching(false);
+
+    const result = (await response.json().catch(() => null)) as
+      | { batchId?: string; queued?: number; skipped?: number; error?: string }
+      | null;
+
+    if (!response.ok) {
+      setEnrichmentError(result?.error ?? "Email finding failed");
+      return;
+    }
+
+    setEnrichmentMessage(
+      `Batch ${result?.batchId}: ${result?.queued ?? 0} queued, ${result?.skipped ?? 0} skipped.`,
+    );
+    clearSelection();
+    router.refresh();
+  }
+
   const pageChecked = filtered.length > 0 && filtered.every((lead) => selection.includes(lead));
 
   return (
     <>
+      <input id="lead-csv-file" type="file" accept=".csv,text/csv" onChange={importCsv} hidden />
+
       <Card className="section">
+        {importError ? (
+          <Notice tone="warning" icon={<IconUpload />}>
+            {importError}
+          </Notice>
+        ) : null}
+
+        {importMessage ? (
+          <Notice tone="accent" icon={<IconUpload />}>
+            Import complete: {importMessage}
+          </Notice>
+        ) : null}
+
+        {importing ? (
+          <Notice tone="accent" icon={<IconUpload />}>
+            Importing CSV...
+          </Notice>
+        ) : null}
+
+        {enrichmentError ? (
+          <Notice tone="warning" icon={<IconLeads />}>
+            {enrichmentError}
+          </Notice>
+        ) : null}
+
+        {enrichmentMessage ? (
+          <Notice tone="accent" icon={<IconLeads />}>
+            Email finding queued: {enrichmentMessage}
+          </Notice>
+        ) : null}
+
         <div className="filter-bar">
           <div className="search-field filter-search">
             <IconSearch />
@@ -154,8 +257,8 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
             <button type="button" className="btn btn-ghost" onClick={clearSelection}>
               Clear
             </button>
-            <button type="button" className="btn btn-primary" disabled={eligible.length === 0}>
-              Find emails for {eligible.length.toLocaleString()}
+            <button type="button" className="btn btn-primary" onClick={findEmails} disabled={eligible.length === 0 || enriching}>
+              {enriching ? "Queuing..." : `Find emails for ${eligible.length.toLocaleString()}`}
             </button>
           </div>
         ) : null}
@@ -167,10 +270,10 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
               title="No leads imported yet"
               description="Import an Apollo CSV export to populate this workspace. Enrichment runs from here once leads exist."
               action={
-                <button type="button" className="btn btn-primary">
+                <label htmlFor="lead-csv-file" className="btn btn-primary">
                   <IconUpload />
                   Import CSV
-                </button>
+                </label>
               }
             />
           ) : filtered.length === 0 ? (

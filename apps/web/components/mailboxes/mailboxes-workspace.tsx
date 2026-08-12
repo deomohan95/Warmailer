@@ -58,7 +58,48 @@ export function MailboxesWorkspace({ mailboxes }: { mailboxes: Mailbox[] }) {
 }
 
 function MailboxCard({ mailbox }: { mailbox: Mailbox }) {
+  const router = useRouter();
   const available = availableToday(mailbox);
+  const [editing, setEditing] = useState(false);
+  const [dailyHardLimit, setDailyHardLimit] = useState(mailbox.dailyHardLimit);
+  const [hourlyHardLimit, setHourlyHardLimit] = useState(mailbox.hourlyHardLimit);
+  const [windowStart, setWindowStart] = useState(mailbox.sendingWindowStart);
+  const [windowEnd, setWindowEnd] = useState(mailbox.sendingWindowEnd);
+  const [timezone, setTimezone] = useState(mailbox.timezone);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const windowValid = windowStart < windowEnd;
+
+  async function saveLimits(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+
+    const response = await fetch("/api/mailboxes", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        mailboxId: mailbox.mailboxId,
+        dailyHardLimit,
+        hourlyHardLimit,
+        sendingWindowStart: windowStart,
+        sendingWindowEnd: windowEnd,
+        timezone,
+      }),
+    });
+
+    setSaving(false);
+
+    if (!response.ok) {
+      const result = (await response.json().catch(() => null)) as { error?: string } | null;
+      setError(result?.error ?? "Mailbox update failed");
+      return;
+    }
+
+    setEditing(false);
+    router.refresh();
+  }
 
   return (
     <Card className="mailbox-card">
@@ -126,14 +167,108 @@ function MailboxCard({ mailbox }: { mailbox: Mailbox }) {
         </div>
       </dl>
 
-      <div className="row" style={{ gap: "var(--s-2)" }}>
-        <button type="button" className="btn btn-secondary" disabled>
-          Edit limits
-        </button>
-        <button type="button" className="btn btn-ghost" disabled>
-          {mailbox.status === "sending_paused" ? "Resume sending" : "Pause sending"}
-        </button>
-      </div>
+      {editing ? (
+        <form className="stack" style={{ gap: "var(--s-3)" }} onSubmit={saveLimits}>
+          <div className="field-row">
+            <div className="field">
+              <label htmlFor={`${mailbox.mailboxId}-daily`}>Daily hard limit</label>
+              <input
+                id={`${mailbox.mailboxId}-daily`}
+                className="input num"
+                type="number"
+                min={1}
+                max={500}
+                value={dailyHardLimit}
+                onChange={(event) => setDailyHardLimit(Number(event.target.value) || 0)}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor={`${mailbox.mailboxId}-hourly`}>Hourly hard limit</label>
+              <input
+                id={`${mailbox.mailboxId}-hourly`}
+                className="input num"
+                type="number"
+                min={1}
+                max={100}
+                value={hourlyHardLimit}
+                onChange={(event) => setHourlyHardLimit(Number(event.target.value) || 0)}
+              />
+            </div>
+          </div>
+
+          <div className="field-row">
+            <div className="field">
+              <label htmlFor={`${mailbox.mailboxId}-start`}>Window opens</label>
+              <input
+                id={`${mailbox.mailboxId}-start`}
+                className="input"
+                type="time"
+                value={windowStart}
+                onChange={(event) => setWindowStart(event.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor={`${mailbox.mailboxId}-end`}>Window closes</label>
+              <input
+                id={`${mailbox.mailboxId}-end`}
+                className="input"
+                type="time"
+                value={windowEnd}
+                onChange={(event) => setWindowEnd(event.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor={`${mailbox.mailboxId}-timezone`}>Timezone</label>
+              <select
+                id={`${mailbox.mailboxId}-timezone`}
+                className="select"
+                value={timezone}
+                onChange={(event) => setTimezone(event.target.value)}
+              >
+                {TIMEZONES.map((zone) => (
+                  <option key={zone} value={zone}>
+                    {zone}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {!windowValid ? (
+            <Notice tone="warning" icon={<IconClock size={14} />}>
+              The sending window must close after it opens.
+            </Notice>
+          ) : null}
+
+          {error ? (
+            <Notice tone="warning" icon={<IconAlert />}>
+              {error}
+            </Notice>
+          ) : null}
+
+          <div className="row" style={{ gap: "var(--s-2)" }}>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={!windowValid || dailyHardLimit < 1 || hourlyHardLimit < 1 || saving}
+            >
+              {saving ? "Saving..." : "Save limits"}
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={() => setEditing(false)} disabled={saving}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      ) : (
+        <div className="row" style={{ gap: "var(--s-2)" }}>
+          <button type="button" className="btn btn-secondary" onClick={() => setEditing(true)}>
+            Edit limits
+          </button>
+          <button type="button" className="btn btn-ghost" disabled>
+            {mailbox.status === "sending_paused" ? "Resume sending" : "Pause sending"}
+          </button>
+        </div>
+      )}
     </Card>
   );
 }

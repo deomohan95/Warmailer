@@ -93,6 +93,25 @@ describe("backend wiring", () => {
       expect(await source(page), page).not.toContain("@/lib/demo");
     }
   });
+
+  it("wires lead import buttons to the CSV file input and API route", async () => {
+    const page = await source("app/(app)/leads/page.tsx");
+    const component = await source("components/leads/leads-workspace.tsx");
+
+    expect(page).toContain('htmlFor="lead-csv-file"');
+    expect(component).toContain('id="lead-csv-file"');
+    expect(component).toContain('type="file"');
+    expect(component).toContain('accept=".csv,text/csv"');
+    expect(component).toContain('fetch("/api/leads/import"');
+  });
+
+  it("wires find emails to the enrichment batch API", async () => {
+    const component = await source("components/leads/leads-workspace.tsx");
+
+    expect(component).toContain('fetch("/api/enrichment-batches"');
+    expect(component).toContain("setEnrichmentMessage");
+    expect(component).toContain("batchId");
+  });
 });
 
 describe("app icon", () => {
@@ -173,6 +192,27 @@ describe("app passwords are write-only", () => {
 
     expect(component).toContain('fetch("/api/mailboxes"');
     expect(component).not.toContain("Nothing was saved");
+  });
+
+  it("lets saved mailbox hard limits be edited without exposing the password", async () => {
+    const component = await source("components/mailboxes/mailboxes-workspace.tsx");
+    const route = await source("app/api/mailboxes/route.ts");
+
+    expect(component).toContain('method: "PATCH"');
+    expect(component).toContain("Save limits");
+    expect(component).not.toMatch(/mailbox\.appPassword\b/);
+    expect(route).toContain("export async function PATCH");
+    expect(route).toContain("limits_updated");
+  });
+});
+
+describe("inbox empty states", () => {
+  it("does not tell the user to connect a mailbox when one is already connected", async () => {
+    const component = await source("components/inbox/inbox-workspace.tsx");
+
+    expect(component).toContain("const hasMailbox = mailboxes.length > 0");
+    expect(component).toContain("Zoho inbox sync worker is wired");
+    expect(component).toContain("hasMailbox ? undefined");
   });
 });
 

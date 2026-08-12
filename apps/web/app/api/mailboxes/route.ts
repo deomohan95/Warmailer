@@ -21,6 +21,15 @@ type MailboxInput = {
   timezone?: string;
 };
 
+type MailboxUpdateInput = {
+  mailboxId?: string;
+  dailyHardLimit?: number;
+  hourlyHardLimit?: number;
+  sendingWindowStart?: string;
+  sendingWindowEnd?: string;
+  timezone?: string;
+};
+
 export async function POST(request: Request) {
   try {
     const input = validate(await request.json());
@@ -57,16 +66,51 @@ export async function POST(request: Request) {
       created_at: now,
     });
 
-    revalidatePath("/");
-    revalidatePath("/mailboxes");
-    revalidatePath("/campaigns");
-    revalidatePath("/campaigns/new");
-    revalidatePath("/inbox");
+    revalidateMailboxPages();
 
     return NextResponse.json({ mailboxId });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Mailbox save failed";
     const status = message.includes("already exists") ? 409 : message.includes("Missing") ? 500 : 400;
+    return NextResponse.json({ error: message }, { status });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const input = validateUpdate(await request.json());
+    const workspace = await getActiveWorkspace();
+    const now = new Date().toISOString();
+
+    await supabasePatch(
+      `mailboxes?id=eq.${encodeURIComponent(input.mailboxId)}&workspace_id=eq.${encodeURIComponent(workspace.workspaceId)}`,
+      {
+        daily_hard_limit: input.dailyHardLimit,
+        hourly_hard_limit: input.hourlyHardLimit,
+        sending_window_start: input.sendingWindowStart,
+        sending_window_end: input.sendingWindowEnd,
+        timezone: input.timezone,
+        updated_at: now,
+      },
+    );
+
+    await supabasePost("mailbox_events", {
+      workspace_id: workspace.workspaceId,
+      mailbox_id: input.mailboxId,
+      event_type: "limits_updated",
+      source: "user_action",
+      metadata: {
+        dailyHardLimit: input.dailyHardLimit,
+        hourlyHardLimit: input.hourlyHardLimit,
+      },
+      created_at: now,
+    });
+
+    revalidateMailboxPages();
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Mailbox update failed";
+    const status = message.includes("Missing") ? 500 : 400;
     return NextResponse.json({ error: message }, { status });
   }
 }
@@ -107,6 +151,30 @@ function validate(input: MailboxInput) {
   };
 }
 
+function validateUpdate(input: MailboxUpdateInput) {
+  const mailboxId = String(input.mailboxId ?? "").trim();
+  const dailyHardLimit = Number(input.dailyHardLimit);
+  const hourlyHardLimit = Number(input.hourlyHardLimit);
+  const sendingWindowStart = String(input.sendingWindowStart ?? "09:00");
+  const sendingWindowEnd = String(input.sendingWindowEnd ?? "17:00");
+  const timezone = String(input.timezone ?? "UTC").trim();
+
+  if (!mailboxId) throw new Error("Mailbox id is required");
+  if (!Number.isInteger(dailyHardLimit) || dailyHardLimit < 1 || dailyHardLimit > 500) {
+    throw new Error("Daily hard limit must be between 1 and 500");
+  }
+  if (!Number.isInteger(hourlyHardLimit) || hourlyHardLimit < 1 || hourlyHardLimit > 100) {
+    throw new Error("Hourly hard limit must be between 1 and 100");
+  }
+  if (!timePattern.test(sendingWindowStart) || !timePattern.test(sendingWindowEnd)) {
+    throw new Error("Sending window times must be HH:MM");
+  }
+  if (sendingWindowStart >= sendingWindowEnd) throw new Error("Sending window must close after it opens");
+  if (!timezone) throw new Error("Timezone is required");
+
+  return { mailboxId, dailyHardLimit, hourlyHardLimit, sendingWindowStart, sendingWindowEnd, timezone };
+}
+
 async function supabasePost(table: string, body: unknown) {
   const url = envValue("NEXT_PUBLIC_SUPABASE_URL")?.replace(/\/$/, "");
   const key = envValue("SUPABASE_SERVICE_ROLE_KEY") ?? envValue("SUPABASE_SECRET_KEY");
@@ -134,6 +202,40 @@ async function supabasePost(table: string, body: unknown) {
     if (response.status === 409) throw new Error("Mailbox already exists for this workspace");
     throw new Error(text || `Supabase insert failed: ${response.status}`);
   }
+}
+
+async function supabasePatch(path: string, body: unknown) {
+  const url = envValue("NEXT_PUBLIC_SUPABASE_URL")?.replace(/\/$/, "");
+  const key = envValue("SUPABASE_SERVICE_ROLE_KEY") ?? envValue("SUPABASE_SECRET_KEY");
+  if (!url) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL");
+  if (!key) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
+
+  let response: Response;
+
+  try {
+    response = await fetch(`${url}/rest/v1/${path}`, {
+      method: "PATCH",
+      headers: {
+        apikey: key,
+        authorization: `Bearer ${key}`,
+        "content-type": "application/json",
+        prefer: "return=minimal",
+      },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new Error("Cannot reach Supabase from this machine. Check internet, firewall, VPN, or proxy for Node.js.");
+  }
+
+  if (!response.ok) throw new Error((await response.text()) || `Supabase update failed: ${response.status}`);
+}
+
+function revalidateMailboxPages() {
+  revalidatePath("/");
+  revalidatePath("/mailboxes");
+  revalidatePath("/campaigns");
+  revalidatePath("/campaigns/new");
+  revalidatePath("/inbox");
 }
 
 function encryptionKey() {
