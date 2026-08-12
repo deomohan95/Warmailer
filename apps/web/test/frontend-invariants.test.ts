@@ -5,6 +5,7 @@ import { campaignDailyCapacity, launchBlockers, type LaunchCheckInput } from "..
 import { allSeedRecords, seedMailboxes } from "../lib/demo";
 import { NAV_ITEMS } from "../lib/nav";
 import type { CampaignSchedule, MailboxCapacity, SequenceStep } from "../lib/types";
+import { ACTIVE_WORKSPACE } from "../lib/workspace";
 
 /**
  * Invariants only — the rules that make this frontend safe to wire to a real
@@ -76,6 +77,24 @@ describe("sidebar navigation", () => {
   });
 });
 
+describe("backend wiring", () => {
+  it("does not let route pages read demo data instead of the backend", async () => {
+    const routePages = [
+      "app/(app)/page.tsx",
+      "app/(app)/leads/page.tsx",
+      "app/(app)/mailboxes/page.tsx",
+      "app/(app)/campaigns/page.tsx",
+      "app/(app)/campaigns/new/page.tsx",
+      "app/(app)/campaigns/[id]/page.tsx",
+      "app/(app)/inbox/page.tsx",
+    ];
+
+    for (const page of routePages) {
+      expect(await source(page), page).not.toContain("@/lib/demo");
+    }
+  });
+});
+
 describe("mailbox hard limits gate campaign launch", () => {
   it("allows launch when the selection fits inside available capacity", () => {
     expect(check()).toEqual([]);
@@ -141,6 +160,14 @@ describe("app passwords are write-only", () => {
 });
 
 describe("lineage metadata", () => {
+  it("uses MyMaidsPro as the active workspace until Supabase membership is wired", () => {
+    expect(ACTIVE_WORKSPACE).toMatchObject({
+      workspaceId: "ws_mymaidspro",
+      name: "MyMaidsPro",
+      role: "owner",
+    });
+  });
+
   it("is present on every visible seeded record", () => {
     expect(allSeedRecords.length).toBeGreaterThan(0);
 
@@ -155,6 +182,7 @@ describe("lineage metadata", () => {
 
   it("keeps every record inside one workspace", () => {
     expect(new Set(allSeedRecords.map((record) => record.workspaceId)).size).toBe(1);
+    expect(new Set(allSeedRecords.map((record) => record.workspaceId))).toEqual(new Set([ACTIVE_WORKSPACE.workspaceId]));
   });
 });
 

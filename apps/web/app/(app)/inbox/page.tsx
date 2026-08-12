@@ -1,10 +1,16 @@
 import { InboxWorkspace } from "@/components/inbox/inbox-workspace";
 import { PageHeader } from "@/components/ui/primitives";
-import { mailboxes, threads } from "@/lib/demo";
+import { getActiveWorkspace, getInboxThreads, getMailboxes } from "@/lib/backend-data";
 
 export const metadata = { title: "Inbox · Warmailer" };
 
-export default function InboxPage() {
+export default async function InboxPage() {
+  const workspace = await getActiveWorkspace();
+  const [threads, mailboxes] = await Promise.all([
+    getInboxThreads(workspace.workspaceId),
+    getMailboxes(workspace.workspaceId),
+  ]);
+
   return (
     <main className="page">
       <PageHeader

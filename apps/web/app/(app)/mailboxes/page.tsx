@@ -1,10 +1,13 @@
 import { MailboxesWorkspace } from "@/components/mailboxes/mailboxes-workspace";
 import { PageHeader } from "@/components/ui/primitives";
-import { mailboxes } from "@/lib/demo";
+import { getActiveWorkspace, getMailboxes } from "@/lib/backend-data";
 
 export const metadata = { title: "Mailboxes · Warmailer" };
 
-export default function MailboxesPage() {
+export default async function MailboxesPage() {
+  const workspace = await getActiveWorkspace();
+  const mailboxes = await getMailboxes(workspace.workspaceId);
+
   return (
     <main className="page">
       <PageHeader

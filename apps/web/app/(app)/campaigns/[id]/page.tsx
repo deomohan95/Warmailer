@@ -3,15 +3,16 @@ import Link from "next/link";
 import { CampaignDetail } from "@/components/campaigns/campaign-detail";
 import { IconCampaigns } from "@/components/icons";
 import { Card, EmptyState, PageHeader } from "@/components/ui/primitives";
-import { campaignActivity, campaigns, leads, mailboxes } from "@/lib/demo";
+import { getActiveWorkspace, getCampaignDetail } from "@/lib/backend-data";
 
 export const metadata = { title: "Campaign · Warmailer" };
 
 export default async function CampaignPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const campaign = campaigns.find((item) => item.campaignId === id);
+  const workspace = await getActiveWorkspace();
+  const detail = await getCampaignDetail(workspace.workspaceId, id);
 
-  if (!campaign) {
+  if (!detail) {
     return (
       <main className="page">
         <PageHeader title="Campaign" />
@@ -33,10 +34,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
     );
   }
 
-  // Scoped once here and passed down — the detail component re-derives nothing.
-  const campaignLeads = leads.filter((lead) => lead.activeCampaignId === campaign.campaignId);
-  const campaignMailboxes = mailboxes.filter((mailbox) => campaign.mailboxIds.includes(mailbox.mailboxId));
-  const activity = campaignActivity.filter((event) => event.campaignId === campaign.campaignId);
+  const { campaign, leads, mailboxes, activity } = detail;
 
   return (
     <main className="page">
@@ -50,12 +48,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
         }
       />
 
-      <CampaignDetail
-        campaign={campaign}
-        leads={campaignLeads}
-        mailboxes={campaignMailboxes}
-        activity={activity}
-      />
+      <CampaignDetail campaign={campaign} leads={leads} mailboxes={mailboxes} activity={activity} />
     </main>
   );
 }

@@ -16,7 +16,7 @@ import {
 } from "@/components/icons";
 import { ThemeToggle } from "@/components/shell/theme-toggle";
 import { activeNavKey, NAV_ITEMS, type NavKey } from "@/lib/nav";
-import { ACTIVE_WORKSPACE } from "@/lib/workspace";
+import type { ActiveWorkspace } from "@/lib/workspace";
 
 const NAV_ICONS: Record<NavKey, (props: { size?: number; className?: string }) => React.ReactElement> = {
   dashboard: IconDashboard,
@@ -36,7 +36,7 @@ function initials(name: string): string {
     .toUpperCase();
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, workspace }: { children: React.ReactNode; workspace: ActiveWorkspace }) {
   const pathname = usePathname();
   const active = activeNavKey(pathname);
   const [navOpen, setNavOpen] = useState(false);
@@ -100,9 +100,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           <button type="button" className="workspace-chip">
             <span className="workspace-avatar" aria-hidden>
-              {initials(ACTIVE_WORKSPACE.name)}
+              {initials(workspace.name)}
             </span>
-            {ACTIVE_WORKSPACE.name}
+            {workspace.name}
           </button>
 
           <div className="topbar-search">
@@ -113,7 +113,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="spacer" />
           <ThemeToggle />
           <button type="button" className="user-chip" aria-label="Account menu">
-            {ACTIVE_WORKSPACE.userInitials}
+            {workspace.userInitials}
           </button>
         </header>
 

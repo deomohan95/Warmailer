@@ -13,17 +13,26 @@ import {
 } from "@/components/icons";
 import { Card, CardHead, EmptyState, Meter, Notice, PageHeader } from "@/components/ui/primitives";
 import { availableToday, campaignDailyCapacity, isSendable } from "@/lib/capacity";
-import { campaignActivity, campaigns, leads, mailboxes, threads } from "@/lib/demo";
+import { getDashboardData } from "@/lib/backend-data";
+import type { Mailbox } from "@/lib/types";
 
 export const metadata = { title: "Dashboard · Warmailer" };
 
-function launchWarnings(): string[] {
+function launchWarnings({
+  importedCount,
+  emailFoundCount,
+  mailboxes,
+}: {
+  importedCount: number;
+  emailFoundCount: number;
+  mailboxes: Mailbox[];
+}): string[] {
   const warnings: string[] = [];
   const sendable = mailboxes.filter(isSendable);
 
-  if (leads.length === 0) {
+  if (importedCount === 0) {
     warnings.push("Import leads before finding emails.");
-  } else if (leads.every((lead) => !lead.email)) {
+  } else if (emailFoundCount === 0) {
     warnings.push("No lead has an email address yet. Run enrichment from the Leads page.");
   }
 
@@ -38,16 +47,16 @@ function launchWarnings(): string[] {
   return warnings;
 }
 
-export default function DashboardPage() {
-  const withEmail = leads.filter((lead) => lead.email).length;
+export default async function DashboardPage() {
+  const { overview, mailboxes, activity } = await getDashboardData();
+  const importedCount = overview?.imported_count ?? 0;
+  const emailFoundCount = overview?.email_found_count ?? 0;
+  const activeCampaignCount = overview?.active_campaign_count ?? 0;
+  const unreadThreadCount = overview?.unread_thread_count ?? 0;
   const sendable = mailboxes.filter(isSendable);
-  const capacity = campaignDailyCapacity(mailboxes);
-  const activeCampaigns = campaigns.filter(
-    (campaign) => campaign.status === "sending" || campaign.status === "scheduled",
-  );
-  const unread = threads.filter((thread) => thread.status === "unread").length;
-  const sendEvents = campaignActivity.filter((event) => event.eventType === "sent");
-  const warnings = launchWarnings();
+  const capacity = overview?.send_capacity_today ?? campaignDailyCapacity(mailboxes);
+  const sendEvents = activity.filter((event) => event.eventType === "sent");
+  const warnings = launchWarnings({ importedCount, emailFoundCount, mailboxes });
 
   return (
     <main className="page">
@@ -79,12 +88,12 @@ export default function DashboardPage() {
             Leads
           </div>
           <div className="state-card-body">
-            {leads.length === 0 ? (
+            {importedCount === 0 ? (
               "No leads imported"
             ) : (
               <>
-                <span className="metric-value">{leads.length.toLocaleString()}</span>
-                <span className="muted">{withEmail.toLocaleString()} with an email address</span>
+                <span className="metric-value">{importedCount.toLocaleString()}</span>
+                <span className="muted">{emailFoundCount.toLocaleString()} with an email address</span>
               </>
             )}
           </div>
@@ -123,12 +132,12 @@ export default function DashboardPage() {
             Campaigns
           </div>
           <div className="state-card-body">
-            {campaigns.length === 0 ? (
+            {activeCampaignCount === 0 ? (
               "No active campaigns"
             ) : (
               <>
-                <span className="metric-value">{activeCampaigns.length}</span>
-                <span className="muted">active of {campaigns.length} total</span>
+                <span className="metric-value">{activeCampaignCount}</span>
+                <span className="muted">active campaigns</span>
               </>
             )}
           </div>
@@ -145,12 +154,12 @@ export default function DashboardPage() {
             Inbox
           </div>
           <div className="state-card-body">
-            {threads.length === 0 ? (
+            {unreadThreadCount === 0 ? (
               "No replies synced"
             ) : (
               <>
-                <span className="metric-value">{unread}</span>
-                <span className="muted">unread of {threads.length} threads</span>
+                <span className="metric-value">{unreadThreadCount}</span>
+                <span className="muted">unread threads</span>
               </>
             )}
           </div>

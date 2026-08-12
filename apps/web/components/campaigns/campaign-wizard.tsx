@@ -14,7 +14,6 @@ import {
   SUPPORTED_VARIABLES,
   unresolvedVariables,
 } from "@/lib/capacity";
-import { defaultSchedule, emptySequence } from "@/lib/demo";
 import { formatSendingDays, LEAD_STATUS, MAILBOX_STATUS } from "@/lib/labels";
 import type { CampaignSchedule, Lead, Mailbox, SequenceStep } from "@/lib/types";
 
@@ -30,6 +29,18 @@ const STEPS = [
 const TIMEZONES = ["Europe/London", "Europe/Berlin", "America/New_York", "Asia/Kolkata", "UTC"];
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+const emptySequence: SequenceStep[] = [{ stepId: "step_1", subject: "", body: "", delayDays: 0 }];
+
+const defaultSchedule: CampaignSchedule = {
+  startDate: "",
+  sendingDays: [1, 2, 3, 4, 5],
+  windowStart: "09:00",
+  windowEnd: "17:00",
+  perMailboxDelaySeconds: 120,
+  maxSendsPerDay: 0,
+  timezone: TIMEZONES[0] as string,
+};
 
 export function CampaignWizard({ leads, mailboxes }: { leads: Lead[]; mailboxes: Mailbox[] }) {
   const [step, setStep] = useState(0);

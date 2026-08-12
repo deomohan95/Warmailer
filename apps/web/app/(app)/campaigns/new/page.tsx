@@ -2,11 +2,17 @@ import Link from "next/link";
 
 import { CampaignWizard } from "@/components/campaigns/campaign-wizard";
 import { PageHeader } from "@/components/ui/primitives";
-import { leads, mailboxes } from "@/lib/demo";
+import { getActiveWorkspace, getLeads, getMailboxes } from "@/lib/backend-data";
 
 export const metadata = { title: "New campaign · Warmailer" };
 
-export default function NewCampaignPage() {
+export default async function NewCampaignPage() {
+  const workspace = await getActiveWorkspace();
+  const [leads, mailboxes] = await Promise.all([
+    getLeads(workspace.workspaceId),
+    getMailboxes(workspace.workspaceId),
+  ]);
+
   return (
     <main className="page">
       <PageHeader

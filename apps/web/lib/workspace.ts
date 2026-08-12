@@ -14,8 +14,8 @@ export type ActiveWorkspace = {
 };
 
 export const ACTIVE_WORKSPACE: ActiveWorkspace = {
-  workspaceId: "ws_pending_backend",
-  name: "No workspace selected",
+  workspaceId: "ws_mymaidspro",
+  name: "MyMaidsPro",
   role: "owner",
-  userInitials: "—",
+  userInitials: "MP",
 };

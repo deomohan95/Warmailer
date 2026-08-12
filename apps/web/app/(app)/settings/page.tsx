@@ -1,6 +1,6 @@
 import { IconAlert, IconLeads } from "@/components/icons";
 import { Card, EmptyState, Notice, PageHeader, StatusPill } from "@/components/ui/primitives";
-import { ACTIVE_WORKSPACE } from "@/lib/workspace";
+import { getActiveWorkspace } from "@/lib/backend-data";
 
 export const metadata = { title: "Settings · Warmailer" };
 
@@ -24,8 +24,8 @@ function Section({
   );
 }
 
-export default function SettingsPage() {
-  const { workspaceId, name, role } = ACTIVE_WORKSPACE;
+export default async function SettingsPage() {
+  const { workspaceId, name, role } = await getActiveWorkspace();
 
   return (
     <main className="page">

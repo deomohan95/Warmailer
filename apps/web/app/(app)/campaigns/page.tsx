@@ -2,12 +2,15 @@ import Link from "next/link";
 
 import { IconCampaigns, IconPlus } from "@/components/icons";
 import { Card, EmptyState, PageHeader, StatusPill } from "@/components/ui/primitives";
-import { campaigns } from "@/lib/demo";
+import { getActiveWorkspace, getCampaigns } from "@/lib/backend-data";
 import { CAMPAIGN_STATUS, formatDateTime } from "@/lib/labels";
 
 export const metadata = { title: "Campaigns · Warmailer" };
 
-export default function CampaignsPage() {
+export default async function CampaignsPage() {
+  const workspace = await getActiveWorkspace();
+  const campaigns = await getCampaigns(workspace.workspaceId);
+
   return (
     <main className="page">
       <PageHeader

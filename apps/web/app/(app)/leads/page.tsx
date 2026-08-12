@@ -1,11 +1,14 @@
 import { IconUpload } from "@/components/icons";
 import { LeadsWorkspace } from "@/components/leads/leads-workspace";
 import { PageHeader } from "@/components/ui/primitives";
-import { leadImports, leads } from "@/lib/demo";
+import { getActiveWorkspace, getImports, getLeads } from "@/lib/backend-data";
 
 export const metadata = { title: "Leads · Warmailer" };
 
-export default function LeadsPage() {
+export default async function LeadsPage() {
+  const workspace = await getActiveWorkspace();
+  const [leads, leadImports] = await Promise.all([getLeads(workspace.workspaceId), getImports(workspace.workspaceId)]);
+
   return (
     <main className="page">
       <PageHeader

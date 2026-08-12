@@ -8,6 +8,7 @@ import type {
   Mailbox,
   SequenceStep,
 } from "@/lib/types";
+import { ACTIVE_WORKSPACE } from "./workspace";
 
 /**
  * Layout fixtures. The app ships with these OFF — the real default state is
@@ -20,7 +21,7 @@ import type {
  */
 export const demoMode = false;
 
-const WS = "ws_seed";
+const WS = ACTIVE_WORKSPACE.workspaceId;
 const T0 = "2026-08-10T09:00:00.000Z";
 const T1 = "2026-08-12T09:00:00.000Z";
 
