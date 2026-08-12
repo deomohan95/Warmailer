@@ -12,6 +12,9 @@ test-results/
 .env.*
 !.env.example
 
+# Brainstorming mockups
+.superpowers/
+
 # Logs and editor/OS files
 *.log
 .DS_Store
