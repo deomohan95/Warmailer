@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  getActiveWorkspace,
+  getMailboxes,
   mapCampaignActivityRow,
   mapCampaignRow,
   mapLeadRow,
@@ -8,6 +10,11 @@ import {
   parseDotenv,
   requireSupabaseConfig,
 } from "../lib/backend-data";
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
 
 describe("backend data mapping", () => {
   it("requires Supabase URL and a server-side key", () => {
@@ -22,6 +29,22 @@ describe("backend data mapping", () => {
       NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
       KEY: "value",
     });
+  });
+
+  it("falls back to the active workspace when Supabase is temporarily unreachable", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://project.supabase.co");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key");
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
+
+    await expect(getActiveWorkspace()).resolves.toMatchObject({ name: "MyMaidsPro" });
+  });
+
+  it("returns empty read data when Supabase is temporarily unreachable", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://project.supabase.co");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key");
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
+
+    await expect(getMailboxes("workspace_1")).resolves.toEqual([]);
   });
 
   it("maps database lead status to the frontend status label contract", () => {

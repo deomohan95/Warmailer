@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { IconAlert, IconCheck, IconClock, IconLock, IconMailbox } from "@/components/icons";
 import { Card, CardHead, EmptyState, Meter, Notice, StatusPill } from "@/components/ui/primitives";
@@ -138,6 +139,7 @@ function MailboxCard({ mailbox }: { mailbox: Mailbox }) {
 }
 
 function AddMailboxForm() {
+  const router = useRouter();
   const [emailAddress, setEmailAddress] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [appPassword, setAppPassword] = useState("");
@@ -146,19 +148,48 @@ function AddMailboxForm() {
   const [windowStart, setWindowStart] = useState("09:00");
   const [windowEnd, setWindowEnd] = useState("17:00");
   const [timezone, setTimezone] = useState(TIMEZONES[0] as string);
-  const [submitted, setSubmitted] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const windowValid = windowStart < windowEnd;
   const complete =
     emailAddress.trim().length > 0 && appPassword.length > 0 && dailyHardLimit >= 1 && hourlyHardLimit >= 1;
 
-  function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    // Nothing is persisted yet. The password is dropped from state immediately
-    // so it cannot be re-rendered, which is also how it will behave once saving
-    // is real: the value goes out once and never comes back.
+    setSaving(true);
+    setMessage(null);
+    setError(null);
+
+    const response = await fetch("/api/mailboxes", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        emailAddress,
+        displayName,
+        appPassword,
+        dailyHardLimit,
+        hourlyHardLimit,
+        sendingWindowStart: windowStart,
+        sendingWindowEnd: windowEnd,
+        timezone,
+      }),
+    });
+
     setAppPassword("");
-    setSubmitted(true);
+    setSaving(false);
+
+    if (!response.ok) {
+      const result = (await response.json().catch(() => null)) as { error?: string } | null;
+      setError(result?.error ?? "Mailbox save failed");
+      return;
+    }
+
+    setEmailAddress("");
+    setDisplayName("");
+    setMessage("Mailbox saved. Campaign capacity will now use its hard limits.");
+    router.refresh();
   }
 
   return (
@@ -273,16 +304,21 @@ function AddMailboxForm() {
           </Notice>
         ) : null}
 
-        {submitted ? (
+        {error ? (
           <Notice tone="warning" icon={<IconAlert />}>
-            Nothing was saved — mailbox connection is not wired to Zoho yet. The app password you typed was discarded
-            and is not held anywhere.
+            {error}
+          </Notice>
+        ) : null}
+
+        {message ? (
+          <Notice tone="accent" icon={<IconCheck />}>
+            {message}
           </Notice>
         ) : null}
 
         <div>
-          <button type="submit" className="btn btn-primary" disabled={!complete || !windowValid}>
-            Connect mailbox
+          <button type="submit" className="btn btn-primary" disabled={!complete || !windowValid || saving}>
+            {saving ? "Connecting..." : "Connect mailbox"}
           </button>
         </div>
       </form>

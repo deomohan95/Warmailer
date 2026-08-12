@@ -177,7 +177,14 @@ export function parseDotenv(text: string): Env {
 function localEnv(): Env {
   if (localEnvCache) return localEnvCache;
 
-  for (const file of [join(process.cwd(), ".env.local"), join(process.cwd(), "..", "..", ".env.local")]) {
+  const initCwd = process.env.INIT_CWD;
+  const files = [
+    join(process.cwd(), ".env.local"),
+    join(process.cwd(), "..", "..", ".env.local"),
+    ...(initCwd ? [join(initCwd, ".env.local")] : []),
+  ];
+
+  for (const file of files) {
     if (existsSync(/* turbopackIgnore: true */ file)) {
       localEnvCache = parseDotenv(readFileSync(/* turbopackIgnore: true */ file, "utf8"));
       return localEnvCache;
@@ -188,20 +195,19 @@ function localEnv(): Env {
   return localEnvCache;
 }
 
+export function envValue(name: string, env: Env = process.env): string | undefined {
+  return env[name] ?? (env === process.env ? localEnv()[name] : undefined);
+}
+
 export function requireSupabaseConfig(env: Env = process.env): SupabaseConfig {
-  const fileEnv = env === process.env ? localEnv() : {};
-  const url = env.NEXT_PUBLIC_SUPABASE_URL ?? fileEnv.NEXT_PUBLIC_SUPABASE_URL;
+  const url = envValue("NEXT_PUBLIC_SUPABASE_URL", env);
   if (!url) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL");
 
   const key =
-    env.SUPABASE_SERVICE_ROLE_KEY ??
-    env.SUPABASE_SECRET_KEY ??
-    env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
-    fileEnv.SUPABASE_SERVICE_ROLE_KEY ??
-    fileEnv.SUPABASE_SECRET_KEY ??
-    fileEnv.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    fileEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    envValue("SUPABASE_SERVICE_ROLE_KEY", env) ??
+    envValue("SUPABASE_SECRET_KEY", env) ??
+    envValue("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", env) ??
+    envValue("NEXT_PUBLIC_SUPABASE_ANON_KEY", env);
   if (!key) throw new Error("Missing Supabase API key");
 
   return { url: url.replace(/\/$/, ""), key };
@@ -209,13 +215,20 @@ export function requireSupabaseConfig(env: Env = process.env): SupabaseConfig {
 
 async function rest<T>(path: string): Promise<T> {
   const { url, key } = requireSupabaseConfig();
-  const response = await fetch(`${url}/rest/v1/${path}`, {
-    cache: "no-store",
-    headers: {
-      apikey: key,
-      authorization: `Bearer ${key}`,
-    },
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${url}/rest/v1/${path}`, {
+      cache: "no-store",
+      headers: {
+        apikey: key,
+        authorization: `Bearer ${key}`,
+      },
+    });
+  } catch {
+    // ponytail: keep local pages open during temporary Supabase/network outages; add a visible ops banner when UX matters.
+    return [] as T;
+  }
 
   if (!response.ok) {
     throw new Error(`Supabase request failed: ${response.status} ${response.statusText}`);
@@ -407,8 +420,13 @@ export const getActiveWorkspace = cache(async (): Promise<ActiveWorkspace> => {
     name: `ilike.${ACTIVE_WORKSPACE.name}`,
     limit: "1",
   });
-  const preferred = await rest<WorkspaceRow[]>(`workspaces?${params}`);
-  const workspace = preferred[0] ?? (await rest<WorkspaceRow[]>("workspaces?select=id,name&limit=1"))[0];
+  let workspace: WorkspaceRow | undefined;
+
+  try {
+    const preferred = await rest<WorkspaceRow[]>(`workspaces?${params}`);
+    workspace = preferred[0] ?? (await rest<WorkspaceRow[]>("workspaces?select=id,name&limit=1"))[0];
+  } catch {
+  }
 
   return {
     workspaceId: workspace?.id ?? ACTIVE_WORKSPACE.workspaceId,

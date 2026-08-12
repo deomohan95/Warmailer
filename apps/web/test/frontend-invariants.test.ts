@@ -95,6 +95,16 @@ describe("backend wiring", () => {
   });
 });
 
+describe("app icon", () => {
+  it("uses the same campaign mark as the Warmailer rail logo", async () => {
+    const icon = await source("app/icon.svg");
+
+    expect(icon).toContain("#d97757");
+    expect(icon).toContain("M3 10.5 20 4l-6.5 17-2.6-7.2z");
+    expect(icon).toContain("M10.9 13.8 20 4");
+  });
+});
+
 describe("mailbox hard limits gate campaign launch", () => {
   it("allows launch when the selection fits inside available capacity", () => {
     expect(check()).toEqual([]);
@@ -156,6 +166,13 @@ describe("app passwords are write-only", () => {
     expect(component).toContain('setAppPassword("")');
     // No saved mailbox field is ever read back into an input.
     expect(component).not.toMatch(/mailbox\.appPassword\b/);
+  });
+
+  it("posts the entered password to the server instead of discarding it locally", async () => {
+    const component = await source("components/mailboxes/mailboxes-workspace.tsx");
+
+    expect(component).toContain('fetch("/api/mailboxes"');
+    expect(component).not.toContain("Nothing was saved");
   });
 });
 
