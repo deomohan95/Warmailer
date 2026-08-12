@@ -8,6 +8,7 @@
     "packages/*"
   ],
   "scripts": {
+    "dev": "npm run dev --workspace @warmailer/web",
     "build": "npm run build --workspaces --if-present",
     "lint": "eslint .",
     "test": "npm run test --workspaces --if-present",
