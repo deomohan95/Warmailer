@@ -4,12 +4,18 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Warmailer",
-  description: "Outbound email operations workspace",
+  description: "Outbound email operations for multiple client workspaces.",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+// Runs before first paint so a stored dark theme never flashes light on reload.
+const themeScript = `(function(){try{var t=localStorage.getItem("wm-theme");if(t!=="light"&&t!=="dark"){t=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}document.documentElement.setAttribute("data-theme",t)}catch(e){document.documentElement.setAttribute("data-theme","light")}})()`;
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body>{children}</body>
     </html>
   );
