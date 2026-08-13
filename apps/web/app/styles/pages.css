@@ -239,6 +239,31 @@
   gap: var(--s-2);
 }
 
+/* ---------- Auth ---------- */
+
+.auth-page {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+}
+
+.auth-card {
+  width: min(100%, 420px);
+  padding: var(--s-6);
+}
+
+.auth-card h1 {
+  margin-top: var(--s-5);
+}
+
+.auth-card form {
+  margin-top: var(--s-5);
+}
+
+.auth-switch {
+  margin-top: var(--s-4);
+}
+
 /* ---------- Filter bar ---------- */
 
 .filter-bar {

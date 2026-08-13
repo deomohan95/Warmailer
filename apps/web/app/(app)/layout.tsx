@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+
 import { AppShell } from "@/components/shell/app-shell";
 import { getActiveWorkspace } from "@/lib/backend-data";
 
@@ -10,6 +12,11 @@ export const dynamic = "force-dynamic";
  * pages take one to two seconds per navigation.
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const workspace = await getActiveWorkspace();
+  let workspace;
+  try {
+    workspace = await getActiveWorkspace();
+  } catch {
+    redirect("/login");
+  }
   return <AppShell workspace={workspace}>{children}</AppShell>;
 }

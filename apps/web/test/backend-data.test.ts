@@ -35,12 +35,12 @@ describe("backend data mapping", () => {
     });
   });
 
-  it("falls back to the active workspace when Supabase is temporarily unreachable", async () => {
+  it("does not fall back to a static workspace without a logged-in user", async () => {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://project.supabase.co");
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key");
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
 
-    await expect(getActiveWorkspace()).resolves.toMatchObject({ name: "MyMaidsPro" });
+    await expect(getActiveWorkspace()).rejects.toThrow("Unauthenticated");
   });
 
   it("returns empty read data when Supabase is temporarily unreachable", async () => {

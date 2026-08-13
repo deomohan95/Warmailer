@@ -78,6 +78,30 @@ describe("sidebar navigation", () => {
 });
 
 describe("backend wiring", () => {
+  it("uses simple Supabase password login before loading the app workspace", async () => {
+    const loginPage = await source("app/login/page.tsx");
+    const signupPage = await source("app/signup/page.tsx");
+    const loginRoute = await source("app/api/auth/login/route.ts");
+    const signupRoute = await source("app/api/auth/signup/route.ts");
+    const logoutRoute = await source("app/api/auth/logout/route.ts");
+    const data = await source("lib/backend-data.ts");
+    const layout = await source("app/(app)/layout.tsx");
+
+    expect(loginPage).toContain('name="identifier"');
+    expect(loginPage).toContain('action="/api/auth/login"');
+    for (const field of ['name="name"', 'name="email"', 'name="phone"', 'name="company"', 'name="password"']) {
+      expect(signupPage).toContain(field);
+    }
+    expect(signupRoute).toContain("/auth/v1/admin/users");
+    expect(signupRoute).toContain("workspace_members");
+    expect(signupRoute).toContain("owner");
+    expect(loginRoute).toContain("/auth/v1/token?grant_type=password");
+    expect(logoutRoute).toContain("ACCESS_COOKIE");
+    expect(data).toContain("getAuthUser");
+    expect(data).toContain("workspace_members");
+    expect(layout).toContain('redirect("/login")');
+  });
+
   it("does not let route pages read demo data instead of the backend", async () => {
     const routePages = [
       "app/(app)/page.tsx",

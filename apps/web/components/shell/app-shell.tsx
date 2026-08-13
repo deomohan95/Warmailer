@@ -112,9 +112,11 @@ export function AppShell({ children, workspace }: { children: React.ReactNode; w
 
           <div className="spacer" />
           <ThemeToggle />
-          <button type="button" className="user-chip" aria-label="Account menu">
-            {workspace.userInitials}
-          </button>
+          <form action="/api/auth/logout" method="post">
+            <button type="submit" className="user-chip" aria-label="Logout">
+              {workspace.userInitials}
+            </button>
+          </form>
         </header>
 
         {children}

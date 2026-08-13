@@ -1,7 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { cookies } from "next/headers";
 import { cache } from "react";
 
+import { ACCESS_COOKIE, authApiKey, type AuthUser } from "./auth";
 import { ACTIVE_WORKSPACE, type ActiveWorkspace } from "./workspace";
 import type {
   Campaign,
@@ -29,6 +31,11 @@ let localEnvCache: Env | null = null;
 type WorkspaceRow = {
   id: string;
   name: string;
+};
+
+type WorkspaceMemberRow = {
+  role: ActiveWorkspace["role"];
+  workspaces: WorkspaceRow | null;
 };
 
 type LeadRow = {
@@ -233,6 +240,33 @@ export function requireSupabaseConfig(env: Env = process.env): SupabaseConfig {
   if (!key) throw new Error("Missing Supabase API key");
 
   return { url: url.replace(/\/$/, ""), key };
+}
+
+async function cookieAccessToken(): Promise<string | undefined> {
+  try {
+    return (await cookies()).get(ACCESS_COOKIE)?.value;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function getAuthUser(accessToken?: string): Promise<AuthUser | null> {
+  const token = accessToken ?? (await cookieAccessToken());
+  if (!token) return null;
+
+  const { url } = requireSupabaseConfig();
+  const response = await fetch(`${url}/auth/v1/user`, {
+    cache: "no-store",
+    headers: {
+      apikey: authApiKey(),
+      authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) return null;
+
+  const user = (await response.json()) as { id?: string; email?: string };
+  return user.id ? { id: user.id, email: user.email ?? "" } : null;
 }
 
 async function rest<T>(path: string): Promise<T> {
@@ -464,25 +498,20 @@ export function mapInboxMessageRow(row: InboxMessageRow): InboxMessage {
 }
 
 export const getActiveWorkspace = cache(async (): Promise<ActiveWorkspace> => {
-  const params = new URLSearchParams({
-    select: "id,name",
-    name: `ilike.${ACTIVE_WORKSPACE.name}`,
-    limit: "1",
-  });
-  let workspace: WorkspaceRow | undefined;
+  const user = await getAuthUser();
+  if (!user) throw new Error("Unauthenticated");
 
-  try {
-    const preferred = await rest<WorkspaceRow[]>(`workspaces?${params}`);
-    workspace = preferred[0] ?? (await rest<WorkspaceRow[]>("workspaces?select=id,name&limit=1"))[0];
-  } catch {
-    // Keep local/dev pages usable when Supabase is temporarily unreachable.
-  }
+  const [membership] = await rest<WorkspaceMemberRow[]>(
+    `workspace_members?user_id=eq.${user.id}&select=role,workspaces(id,name)&limit=1`,
+  );
+  const workspace = membership?.workspaces;
+  if (!membership || !workspace) throw new Error("No workspace membership");
 
   return {
-    workspaceId: workspace?.id ?? ACTIVE_WORKSPACE.workspaceId,
-    name: workspace?.name ?? ACTIVE_WORKSPACE.name,
-    role: ACTIVE_WORKSPACE.role,
-    userInitials: ACTIVE_WORKSPACE.userInitials,
+    workspaceId: workspace.id,
+    name: workspace.name,
+    role: membership.role,
+    userInitials: user.email ? user.email.slice(0, 2).toUpperCase() : ACTIVE_WORKSPACE.userInitials,
   };
 });
 
