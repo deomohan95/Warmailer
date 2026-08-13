@@ -294,6 +294,23 @@ describe("inbox empty states", () => {
     expect(component).not.toContain('<div className="message-body">{selected.preview}</div>');
   });
 
+  it("renders dashboard metrics from campaigns, messages and activity with a campaign filter", async () => {
+    const page = await source("app/(app)/page.tsx");
+    const component = await source("components/dashboard/dashboard-workspace.tsx");
+    const data = await source("lib/backend-data.ts");
+
+    expect(data).toContain("getCampaigns(workspace.workspaceId)");
+    expect(data).toContain("getInboxThreads(workspace.workspaceId)");
+    expect(data).toContain("getInboxMessages(workspace.workspaceId)");
+    expect(page).toContain("DashboardWorkspace");
+    expect(component).toContain('aria-label="Campaign filter"');
+    for (const label of ["Emails sent", "Opened", "Replied", "Bounced", "Sending activity"]) {
+      expect(component).toContain(label);
+    }
+    expect(component).not.toContain("No active campaigns");
+    expect(component).not.toContain("No replies synced");
+  });
+
   it("keeps Inbox and Leads as full-page workspaces without header explainer copy", async () => {
     const inboxPage = await source("app/(app)/inbox/page.tsx");
     const leadsPage = await source("app/(app)/leads/page.tsx");
@@ -305,11 +322,31 @@ describe("inbox empty states", () => {
     expect(leadsPage).not.toContain("Every lead in this workspace");
     expect(inboxPage).toContain('className="page page-fit"');
     expect(inbox).toContain('className="workspace-full"');
-    expect(leads).toContain('className="workspace-full section"');
+    expect(leads).toContain('className="workspace-full"');
+    expect(leadsPage).toContain('className="page page-fit"');
     expect(inbox).not.toContain('<Card>\n      <div className="inbox-toolbar">');
     expect(leads).not.toContain('<Card className="section">');
     expect(styles).toContain(".page-fit");
-    expect(styles).toContain("height: calc(100dvh - 160px)");
+    // Derived from the topbar token, not a guessed constant that drifts when the
+    // header changes size.
+    expect(styles).toContain("height: calc(100dvh - var(--topbar-h))");
+  });
+
+  it("keeps the reply composer on screen however long the conversation is", async () => {
+    const component = await source("components/inbox/inbox-workspace.tsx");
+    const styles = await source("app/styles/pages.css");
+
+    // The pane is three fixed bands; only the middle one scrolls, so the header
+    // and the Send button can never be scrolled out of view.
+    expect(styles).toMatch(/\.reading-pane\s*\{[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\) auto/);
+    expect(styles).toMatch(/\.message-trail\s*\{[^}]*overflow-y:\s*auto/);
+    expect(styles).not.toMatch(/\.page-fit \.reading-pane\s*\{[^}]*overflow-y:\s*auto/);
+
+    // Composer is a sibling of the trail, never nested inside it.
+    const trailIndex = component.indexOf('<div className="message-trail">');
+    const composerIndex = component.indexOf('<div className="composer">');
+    expect(trailIndex).toBeGreaterThan(-1);
+    expect(composerIndex).toBeGreaterThan(trailIndex);
   });
 
   it("aligns the inbox trail by sender direction and trims quoted reply history", async () => {

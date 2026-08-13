@@ -26,15 +26,36 @@
   width: 100%;
 }
 
+/**
+ * A page that fills the viewport instead of scrolling it. The height is derived
+ * from the topbar rather than a guessed constant, and the header keeps its
+ * natural size — everything left over goes to the workspace, which is what
+ * actually scrolls internally.
+ */
 .page-fit {
-  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  max-width: 1560px;
+  height: calc(100dvh - var(--topbar-h));
+  padding-top: var(--s-5);
+  padding-bottom: var(--s-4);
   overflow: hidden;
+}
+
+/* Every pixel spent on chrome here is a pixel taken from the mail pane. */
+.page-fit .page-header {
+  flex: none;
+  margin-bottom: var(--s-3);
+}
+
+.page-fit .page-header h1 {
+  font-size: 21px;
 }
 
 .page-fit .workspace-full {
   display: flex;
   flex-direction: column;
-  height: calc(100dvh - 160px);
+  flex: 1;
   min-height: 0;
 }
 
@@ -43,16 +64,118 @@
   min-height: 0;
 }
 
-.page-fit .thread-list,
-.page-fit .reading-pane {
+.page-fit .thread-list {
   max-height: none;
-  min-height: 0;
-  overflow-y: auto;
 }
 
 /* A single child that should occupy the whole two-column row. */
 .span-2 {
   grid-column: 1 / -1;
+}
+
+/* ---------- Full-page workspace chrome ---------- */
+
+.workspace-notices {
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+}
+
+/* Filters used as standalone chrome rather than inside a card. */
+.workspace-filters {
+  margin-bottom: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  background: var(--surface);
+}
+
+/* A dense metric row: same figures as tall tiles, a third of the height. */
+.stat-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3) var(--s-5);
+  margin-bottom: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  background: var(--surface);
+}
+
+.stat-strip-head h2 {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.stat-strip-head p {
+  margin-top: 2px;
+  color: var(--ink-3);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+/* Hairline rules do the separating — no boxes, no background per figure. */
+.stat {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 1px;
+  padding: 0 var(--s-5);
+  border-left: 1px solid var(--line);
+}
+
+.stat:first-child {
+  border-left: 0;
+}
+
+.stat:last-child {
+  padding-right: 0;
+}
+
+/**
+ * Sans, semibold, proportional figures. A serif display face here reads as
+ * decoration, and tabular figures make a standalone number look loose — both are
+ * for columns and hero charts, not stat values.
+ */
+.stat dd {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.15;
+  font-variant-numeric: proportional-nums;
+}
+
+.stat dt {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink-3);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.stat-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.stat-dot-good {
+  color: var(--good);
+}
+
+.stat-dot-warning {
+  color: var(--warning);
+}
+
+.stat-dot-accent {
+  color: var(--accent);
 }
 
 /* ---------- Dashboard ---------- */
@@ -148,6 +271,47 @@
   font-size: 13px;
 }
 
+/* ---------- Leads workspace ---------- */
+
+/**
+ * The table owns the full pane and scrolls inside it, so the stat strip, filters
+ * and selection bar above it never move and the sticky header keeps working.
+ */
+.leads-table-pane {
+  flex: 1;
+  min-width: 0;
+  min-height: 300px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+/* The selection bar is chrome here, not a strip inside a card. */
+.workspace-full > .bulk-bar {
+  margin-bottom: var(--s-3);
+  border: 1px solid color-mix(in oklab, var(--accent) 35%, var(--border));
+  border-radius: var(--r-card);
+}
+
+.leads-table-pane {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--ink-3) 45%, transparent) transparent;
+}
+
+.leads-table-pane::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.leads-table-pane::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--ink-3) 45%, transparent);
+  background-clip: content-box;
+}
+
 /* ---------- Wizard ---------- */
 
 .wizard {
@@ -239,26 +403,80 @@
 
 /* ---------- Inbox ---------- */
 
+/**
+ * Folders and filters share one row. As two stacked bands they cost the mail
+ * pane ~45px of height for controls that fit side by side; they wrap back to
+ * two rows only when the viewport is genuinely too narrow.
+ */
 .inbox-toolbar {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--s-3);
-  padding: var(--s-4) var(--s-4) 0;
-}
-
-.inbox-filters {
   padding: 0 0 var(--s-3);
 }
 
+.inbox-toolbar .tabs {
+  flex: none;
+  border-bottom: 0;
+}
+
+.inbox-filters {
+  margin-left: auto;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.inbox-filters .select {
+  height: 32px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* The inbox is one framed pane; only its two inner columns scroll. */
 .inbox {
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
-  min-height: 520px;
+  grid-template-columns: 340px minmax(0, 1fr);
+  /* Low enough that a short viewport never clips the pane, since .page-fit hides
+     overflow; the pane's real height comes from flex, not this floor. */
+  min-height: 360px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  overflow: hidden;
 }
 
 .thread-list {
   border-right: 1px solid var(--border);
   overflow-y: auto;
+  overscroll-behavior: contain;
   max-height: 640px;
+}
+
+/* Recessive scrollbars — a chunky default bar reads as a bug in a mail pane. */
+.thread-list,
+.message-trail {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--ink-3) 45%, transparent) transparent;
+}
+
+.thread-list::-webkit-scrollbar,
+.message-trail::-webkit-scrollbar {
+  width: 10px;
+}
+
+.thread-list::-webkit-scrollbar-thumb,
+.message-trail::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--ink-3) 45%, transparent);
+  background-clip: content-box;
+}
+
+.thread-list::-webkit-scrollbar-thumb:hover,
+.message-trail::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--ink-3) 70%, transparent);
+  background-clip: content-box;
 }
 
 .thread-item {
@@ -319,20 +537,102 @@
   white-space: nowrap;
 }
 
+/**
+ * Three fixed bands: subject header, scrolling trail, composer. The composer is
+ * a row of the grid rather than the last item in a scrolling column, so Send is
+ * always on screen no matter how long the conversation runs.
+ */
 .reading-pane {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-width: 0;
+  min-height: 0;
 }
 
-.inbox-pane {
-  gap: var(--s-4);
+.reading-pane > .empty {
+  grid-row: 1 / -1;
+  align-self: center;
+}
+
+.pane-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
   padding: var(--s-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.pane-subject {
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+
+.pane-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+
+.pane-meta .action-link {
+  font-size: 12.5px;
+}
+
+.pane-actions {
+  margin-left: auto;
+  gap: var(--s-2);
+  flex: none;
 }
 
 .message-trail {
   display: grid;
+  align-content: start;
+  gap: var(--s-4);
+  padding: var(--s-4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* ---------- Composer ---------- */
+
+.composer {
+  padding: var(--s-3) var(--s-4) var(--s-4);
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-2);
+}
+
+.composer-input {
+  min-height: 40px;
+  max-height: 160px;
+  padding: 9px 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.composer-send {
+  flex: none;
+  height: 40px;
+  padding: 0 var(--s-4);
+}
+
+.composer-foot {
+  display: flex;
+  align-items: center;
   gap: var(--s-3);
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.composer-note {
+  font-size: 12.5px;
 }
 
 .message-card {
@@ -366,17 +666,6 @@
   line-height: 1.65;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-}
-
-.lead-context {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 6px var(--s-3);
-  font-size: 12.5px;
-}
-
-.lead-context dt {
-  color: var(--ink-3);
 }
 
 /* ---------- Mailboxes ---------- */
@@ -473,14 +762,20 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /* Stacked: the list takes a fixed band and the pane takes the rest. */
   .inbox {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 240px minmax(0, 1fr);
   }
 
   .thread-list {
     border-right: 0;
     border-bottom: 1px solid var(--border);
-    max-height: 320px;
+    max-height: none;
+  }
+
+  .page-fit .thread-list {
+    max-height: none;
   }
 
   .review-grid {

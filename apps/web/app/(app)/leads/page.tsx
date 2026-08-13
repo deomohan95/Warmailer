@@ -10,7 +10,7 @@ export default async function LeadsPage() {
   const [leads, leadImports] = await Promise.all([getLeads(workspace.workspaceId), getImports(workspace.workspaceId)]);
 
   return (
-    <main className="page">
+    <main className="page page-fit">
       <PageHeader
         title="Leads"
         actions={

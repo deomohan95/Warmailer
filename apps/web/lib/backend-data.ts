@@ -499,9 +499,15 @@ export async function getDashboardData() {
       unread_thread_count: number;
     }[]
   >(`dashboard_overview?workspace_id=eq.${workspace.workspaceId}&select=*&limit=1`);
-  const [mailboxes, activity] = await Promise.all([getMailboxes(workspace.workspaceId), getCampaignActivity(workspace.workspaceId)]);
+  const [mailboxes, campaigns, activity, inboxThreads, messages] = await Promise.all([
+    getMailboxes(workspace.workspaceId),
+    getCampaigns(workspace.workspaceId),
+    getCampaignActivity(workspace.workspaceId),
+    getInboxThreads(workspace.workspaceId),
+    getInboxMessages(workspace.workspaceId),
+  ]);
 
-  return { workspace, overview, mailboxes, activity };
+  return { workspace, overview, mailboxes, campaigns, activity, inboxThreads, messages };
 }
 
 export async function getLeads(workspaceId: string) {

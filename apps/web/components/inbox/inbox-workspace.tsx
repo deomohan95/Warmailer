@@ -191,16 +191,25 @@ export function InboxWorkspace({
           {selected === null ? (
             <EmptyState small title="Select a message" description="Email trails open in this pane." />
           ) : (
-            <div className="stack inbox-pane">
-              <div className="row" style={{ gap: "var(--s-2)", alignItems: "flex-start" }}>
-                <div className="stack" style={{ gap: 6 }}>
-                  <h2 style={{ fontSize: 18 }}>{selected.subject}</h2>
-                  <div className="subtle" style={{ fontSize: 12.5 }}>
-                    {campaign?.name ?? "No campaign"} · {mailbox?.emailAddress ?? selected.mailboxId} ·{" "}
-                    {formatDateTime(selected.lastAt)}
+            <>
+              <header className="pane-head">
+                <div className="stack" style={{ gap: 5, minWidth: 0 }}>
+                  <h2 className="pane-subject">{selected.subject}</h2>
+                  <div className="pane-meta">
+                    {selected.campaignId ? (
+                      <Link href={`/campaigns/${selected.campaignId}`} className="action-link">
+                        {campaign?.name ?? selected.campaignId}
+                      </Link>
+                    ) : (
+                      <span>No campaign</span>
+                    )}
+                    <span aria-hidden>·</span>
+                    <span>{mailbox?.emailAddress ?? selected.mailboxId}</span>
+                    <span aria-hidden>·</span>
+                    <span className="num">{formatDateTime(selected.lastAt)}</span>
                   </div>
                 </div>
-                <div className="row" style={{ marginLeft: "auto", gap: "var(--s-2)" }}>
+                <div className="row pane-actions">
                   {selected.status ? <StatusPill {...THREAD_STATUS[selected.status]} /> : <StatusPill label="Sent" tone="good" />}
                   {selected.thread ? (
                     <button
@@ -212,24 +221,7 @@ export function InboxWorkspace({
                     </button>
                   ) : null}
                 </div>
-              </div>
-
-              <dl className="lead-context">
-                <dt>From</dt>
-                <dd>{selected.fromEmail}</dd>
-                <dt>Mailbox</dt>
-                <dd>{mailbox ? mailbox.emailAddress : selected.mailboxId}</dd>
-                <dt>Campaign</dt>
-                <dd>
-                  {selected.campaignId ? (
-                    <Link href={`/campaigns/${selected.campaignId}`} className="action-link" style={{ fontSize: 12.5 }}>
-                      {campaign?.name ?? selected.campaignId}
-                    </Link>
-                  ) : (
-                    <span className="subtle">Not from a campaign</span>
-                  )}
-                </dd>
-              </dl>
+              </header>
 
               <div className="message-trail">
                 {conversationMessages.length === 0 ? (
@@ -256,54 +248,59 @@ export function InboxWorkspace({
                 )}
               </div>
 
-              {selected.thread ? (
-                <div className="stack" style={{ gap: "var(--s-2)" }}>
-                  <label htmlFor="reply-body" className="field-hint">
-                    Reply from {mailbox ? mailbox.emailAddress : "the receiving mailbox"}
-                  </label>
-                  <textarea
-                    id="reply-body"
-                    className="textarea"
-                    style={{ minHeight: 96 }}
-                    placeholder="Type a reply. It will send from this mailbox and stay in the same email thread."
-                    value={replyBody}
-                    onChange={(event) => setReplyBody(event.target.value)}
-                  />
-                  <div className="row" style={{ gap: "var(--s-2)" }}>
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      disabled={!replyBody.trim() || isSending}
-                      onClick={async () => {
-                        setIsSending(true);
-                        setReplyStatus(null);
-                        try {
-                          const response = await fetch("/api/inbox/reply", {
-                            method: "POST",
-                            headers: { "content-type": "application/json" },
-                            body: JSON.stringify({ threadId: selected.thread?.threadId, body: replyBody }),
-                          });
-                          const data = await response.json().catch(() => ({}));
-                          if (!response.ok) throw new Error(data.error ?? "Reply failed");
-                          setReplyBody("");
-                          setReplyStatus("Reply sent.");
-                          router.refresh();
-                        } catch (error) {
-                          setReplyStatus(error instanceof Error ? error.message : "Reply failed");
-                        } finally {
-                          setIsSending(false);
-                        }
-                      }}
-                    >
-                      {isSending ? "Sending..." : "Send reply"}
-                    </button>
-                    {replyStatus ? <span className="subtle">{replyStatus}</span> : null}
-                  </div>
-                </div>
-              ) : (
-                <div className="subtle">Reply opens when the lead replies and a thread exists.</div>
-              )}
-            </div>
+              <div className="composer">
+                {selected.thread ? (
+                  <>
+                    <div className="composer-row">
+                      <textarea
+                        id="reply-body"
+                        className="textarea composer-input"
+                        rows={1}
+                        aria-label={`Reply to ${selected.fromEmail}`}
+                        placeholder="Write a reply…"
+                        value={replyBody}
+                        onChange={(event) => setReplyBody(event.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-primary composer-send"
+                        disabled={!replyBody.trim() || isSending}
+                        onClick={async () => {
+                          setIsSending(true);
+                          setReplyStatus(null);
+                          try {
+                            const response = await fetch("/api/inbox/reply", {
+                              method: "POST",
+                              headers: { "content-type": "application/json" },
+                              body: JSON.stringify({ threadId: selected.thread?.threadId, body: replyBody }),
+                            });
+                            const data = await response.json().catch(() => ({}));
+                            if (!response.ok) throw new Error(data.error ?? "Reply failed");
+                            setReplyBody("");
+                            setReplyStatus("Reply sent.");
+                            router.refresh();
+                          } catch (error) {
+                            setReplyStatus(error instanceof Error ? error.message : "Reply failed");
+                          } finally {
+                            setIsSending(false);
+                          }
+                        }}
+                      >
+                        {isSending ? "Sending…" : "Send"}
+                      </button>
+                    </div>
+                    <div className="composer-foot">
+                      <span className="subtle">
+                        Sends from {mailbox ? mailbox.emailAddress : "the receiving mailbox"}, in this thread.
+                      </span>
+                      {replyStatus ? <span className="muted">{replyStatus}</span> : null}
+                    </div>
+                  </>
+                ) : (
+                  <p className="subtle composer-note">Reply opens when the lead replies and a thread exists.</p>
+                )}
+              </div>
+            </>
           )}
         </div>
       </div>

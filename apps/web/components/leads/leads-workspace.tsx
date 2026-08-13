@@ -4,9 +4,9 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { IconLeads, IconSearch, IconUpload } from "@/components/icons";
-import { Card, CardHead, EmptyState, Notice, StatusPill } from "@/components/ui/primitives";
+import { EmptyState, Notice, StatusPill } from "@/components/ui/primitives";
 import { LEAD_STATUS } from "@/lib/labels";
-import { LEAD_CSV_HEADER, type Lead, type LeadImport, type LeadStatus } from "@/lib/types";
+import type { Lead, LeadImport, LeadStatus } from "@/lib/types";
 
 const STATUS_ORDER: LeadStatus[] = [
   "not_enriched",
@@ -16,6 +16,25 @@ const STATUS_ORDER: LeadStatus[] = [
   "not_found",
   "failed",
   "suppressed",
+];
+
+/**
+ * The overview figures. Tones match the status pills the table already uses, so a
+ * count and its rows never disagree; the dot is the state signal, the text stays
+ * in ink tokens.
+ */
+type UploadStat = {
+  key: "total" | "found" | "inFlight" | "notFound" | "eligible";
+  label: string;
+  tone?: "good" | "warning" | "accent";
+};
+
+const STATS: readonly UploadStat[] = [
+  { key: "total", label: "Imported" },
+  { key: "found", label: "Email found", tone: "good" },
+  { key: "inFlight", label: "In progress", tone: "accent" },
+  { key: "notFound", label: "Not found", tone: "warning" },
+  { key: "eligible", label: "Eligible to enrich" },
 ];
 
 /** Only leads without an email address are sent to enrichment. */
@@ -49,6 +68,7 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
     () => (selectedImportId === "all" ? leads : leads.filter((lead) => lead.importIds?.includes(selectedImportId))),
     [leads, selectedImportId],
   );
+  const selectedUpload = imports.find((item) => item.importId === selectedImportId);
   const uploadStats = useMemo(
     () => ({
       total: uploadLeads.length,
@@ -174,72 +194,62 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
     <>
       <input id="lead-csv-file" type="file" accept=".csv,text/csv" onChange={importCsv} hidden />
 
-      <div className="workspace-full section">
-        {importError ? (
-          <Notice tone="warning" icon={<IconUpload />}>
-            {importError}
-          </Notice>
-        ) : null}
+      <div className="workspace-full">
+        {importError || importMessage || importing || enrichmentError || enrichmentMessage ? (
+          <div className="stack workspace-notices">
+            {importError ? (
+              <Notice tone="warning" icon={<IconUpload />}>
+                {importError}
+              </Notice>
+            ) : null}
 
-        {importMessage ? (
-          <Notice tone="accent" icon={<IconUpload />}>
-            Import complete: {importMessage}
-          </Notice>
-        ) : null}
+            {importMessage ? (
+              <Notice tone="accent" icon={<IconUpload />}>
+                Import complete: {importMessage}
+              </Notice>
+            ) : null}
 
-        {importing ? (
-          <Notice tone="accent" icon={<IconUpload />}>
-            Importing CSV...
-          </Notice>
-        ) : null}
+            {importing ? (
+              <Notice tone="accent" icon={<IconUpload />}>
+                Importing CSV...
+              </Notice>
+            ) : null}
 
-        {enrichmentError ? (
-          <Notice tone="warning" icon={<IconLeads />}>
-            {enrichmentError}
-          </Notice>
-        ) : null}
+            {enrichmentError ? (
+              <Notice tone="warning" icon={<IconLeads />}>
+                {enrichmentError}
+              </Notice>
+            ) : null}
 
-        {enrichmentMessage ? (
-          <Notice tone="accent" icon={<IconLeads />}>
-            Email finding queued: {enrichmentMessage}
-          </Notice>
-        ) : null}
-
-        <CardHead title="Upload overview" display />
-        <div className="card-body">
-          <div className="grid-4">
-            <Card className="state-card">
-              <div className="state-card-head">Imported</div>
-              <div className="state-card-body">
-                <span className="metric-value">{uploadStats.total.toLocaleString()}</span>
-                <span className="subtle">{selectedImportId === "all" ? "All uploads" : "Selected upload"}</span>
-              </div>
-            </Card>
-            <Card className="state-card">
-              <div className="state-card-head">Email found</div>
-              <div className="state-card-body">
-                <span className="metric-value">{uploadStats.found.toLocaleString()}</span>
-                <span className="subtle">Ready for campaigns</span>
-              </div>
-            </Card>
-            <Card className="state-card">
-              <div className="state-card-head">In progress</div>
-              <div className="state-card-body">
-                <span className="metric-value">{uploadStats.inFlight.toLocaleString()}</span>
-                <span className="subtle">Queued or processing</span>
-              </div>
-            </Card>
-            <Card className="state-card">
-              <div className="state-card-head">Not found</div>
-              <div className="state-card-body">
-                <span className="metric-value">{uploadStats.notFound.toLocaleString()}</span>
-                <span className="subtle">{uploadStats.eligible.toLocaleString()} still eligible</span>
-              </div>
-            </Card>
+            {enrichmentMessage ? (
+              <Notice tone="accent" icon={<IconLeads />}>
+                Email finding queued: {enrichmentMessage}
+              </Notice>
+            ) : null}
           </div>
-        </div>
+        ) : null}
 
-        <div className="filter-bar">
+        {/* One dense strip rather than four tall tiles — the table is what needs the height. */}
+        <section className="stat-strip">
+          <div className="stat-strip-head">
+            <h2>Upload overview</h2>
+            <p>{selectedUpload ? selectedUpload.fileName : "All uploads"}</p>
+          </div>
+
+          <dl className="stat-row">
+            {STATS.map((stat) => (
+              <div key={stat.key} className="stat">
+                <dt>
+                  {stat.tone ? <span className={`stat-dot stat-dot-${stat.tone}`} aria-hidden /> : null}
+                  {stat.label}
+                </dt>
+                <dd>{uploadStats[stat.key].toLocaleString()}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+
+        <div className="filter-bar workspace-filters">
           <div className="search-field filter-search">
             <IconSearch />
             <input
@@ -343,7 +353,7 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
           </div>
         ) : null}
 
-        <div className="card-body card-body-flush">
+        <div className="leads-table-pane">
           {leads.length === 0 ? (
             <EmptyState
               icon={<IconLeads />}
@@ -359,7 +369,6 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
           ) : filtered.length === 0 ? (
             <EmptyState small title="No leads match these filters" description="Adjust or clear the filters above." />
           ) : (
-            <div className="table-wrap">
               <table className="table">
                 <thead>
                   <tr>
@@ -408,68 +417,8 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
                   ))}
                 </tbody>
               </table>
-            </div>
           )}
         </div>
-      </div>
-
-      <div className="grid-2 section">
-        <Card>
-          <CardHead title="Imports" display />
-          <div className="card-body">
-            {imports.length === 0 ? (
-              <EmptyState
-                small
-                title="No imports yet"
-                description="The importer expects an Apollo export with this exact header row."
-                action={<code className="tag">{LEAD_CSV_HEADER}</code>}
-              />
-            ) : (
-              <div className="stack" style={{ gap: "var(--s-3)" }}>
-                {imports.map((item) => (
-                  <div key={item.importId} className="row" style={{ gap: "var(--s-3)" }}>
-                    <div>
-                      <div className="cell-strong">{item.fileName}</div>
-                      <div className="cell-sub num">
-                        {item.importedCount.toLocaleString()} imported · {item.duplicateCount.toLocaleString()}{" "}
-                        duplicates
-                      </div>
-                    </div>
-                    <div className="spacer" />
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => {
-                        setSelectedImportId(item.importId);
-                        clearSelection();
-                      }}
-                    >
-                      View upload
-                    </button>
-                    <StatusPill label={item.status === "completed" ? "Completed" : "In progress"} tone="neutral" />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </Card>
-
-        <Card>
-          <CardHead title="Finding emails" display />
-          <div className="card-body stack" style={{ gap: "var(--s-3)" }}>
-            <Notice tone="accent">
-              Select leads above, then run <strong>Find emails</strong>. Leads that already have an address are skipped.
-            </Notice>
-            <ol className="stack muted" style={{ gap: 6, paddingLeft: 18, fontSize: 13 }}>
-              <li>The primary single-link actor runs first for each eligible lead.</li>
-              <li>Only leads the primary actor reported as a true not-found go to the fallback bulk actor.</li>
-              <li>Results write back to the lead with the enrichment batch that produced them.</li>
-            </ol>
-            <p className="subtle" style={{ fontSize: 12.5 }}>
-              The worker writes results back to Supabase, then this page updates from the same lead records.
-            </p>
-          </div>
-        </Card>
       </div>
     </>
   );
