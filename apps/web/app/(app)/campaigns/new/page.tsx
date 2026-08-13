@@ -6,7 +6,12 @@ import { getActiveWorkspace, getLeads, getMailboxes } from "@/lib/backend-data";
 
 export const metadata = { title: "New campaign · Warmailer" };
 
-export default async function NewCampaignPage() {
+type NewCampaignSearchParams = Promise<{ leadIds?: string | string[] }>;
+
+export default async function NewCampaignPage({ searchParams }: { searchParams?: NewCampaignSearchParams }) {
+  const params = searchParams ? await searchParams : {};
+  const rawLeadIds = Array.isArray(params.leadIds) ? params.leadIds[0] : params.leadIds;
+  const initialLeadIds = (rawLeadIds ?? "").split(",").filter(Boolean);
   const workspace = await getActiveWorkspace();
   const [leads, mailboxes] = await Promise.all([
     getLeads(workspace.workspaceId),
@@ -25,7 +30,7 @@ export default async function NewCampaignPage() {
         }
       />
 
-      <CampaignWizard leads={leads} mailboxes={mailboxes} />
+      <CampaignWizard leads={leads} mailboxes={mailboxes} initialLeadIds={initialLeadIds} />
     </main>
   );
 }

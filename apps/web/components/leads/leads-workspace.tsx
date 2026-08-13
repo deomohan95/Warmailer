@@ -30,6 +30,7 @@ function unique(values: string[]): string[] {
 export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: LeadImport[] }) {
   const router = useRouter();
   const [search, setSearch] = useState("");
+  const [selectedImportId, setSelectedImportId] = useState("all");
   const [status, setStatus] = useState<LeadStatus | "all">("all");
   const [industry, setIndustry] = useState("all");
   const [location, setLocation] = useState("all");
@@ -44,10 +45,24 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
 
   const industries = useMemo(() => unique(leads.map((lead) => lead.industry)), [leads]);
   const locations = useMemo(() => unique(leads.map((lead) => lead.location)), [leads]);
+  const uploadLeads = useMemo(
+    () => (selectedImportId === "all" ? leads : leads.filter((lead) => lead.importIds?.includes(selectedImportId))),
+    [leads, selectedImportId],
+  );
+  const uploadStats = useMemo(
+    () => ({
+      total: uploadLeads.length,
+      found: uploadLeads.filter((lead) => lead.emailStatus === "email_found").length,
+      inFlight: uploadLeads.filter((lead) => lead.emailStatus === "queued" || lead.emailStatus === "processing").length,
+      notFound: uploadLeads.filter((lead) => lead.emailStatus === "not_found").length,
+      eligible: uploadLeads.filter(isEnrichable).length,
+    }),
+    [uploadLeads],
+  );
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    return leads.filter((lead) => {
+    return uploadLeads.filter((lead) => {
       if (status !== "all" && lead.emailStatus !== status) return false;
       if (industry !== "all" && lead.industry !== industry) return false;
       if (location !== "all" && lead.location !== location) return false;
@@ -57,10 +72,13 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
         .toLowerCase()
         .includes(needle);
     });
-  }, [leads, search, status, industry, location]);
+  }, [uploadLeads, search, status, industry, location]);
 
   const selection = allFilteredSelected ? filtered : filtered.filter((lead) => selectedIds.includes(lead.leadId));
   const eligible = selection.filter(isEnrichable);
+  const campaignReady = selection.filter(
+    (lead) => Boolean(lead.email) && lead.emailStatus === "email_found" && !lead.activeCampaignId,
+  );
   const skippedHasEmail = selection.filter((lead) => Boolean(lead.email));
   const skippedSuppressed = selection.filter((lead) => lead.emailStatus === "suppressed");
 
@@ -146,13 +164,17 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
     router.refresh();
   }
 
+  function createCampaign() {
+    router.push(`/campaigns/new?leadIds=${encodeURIComponent(campaignReady.map((lead) => lead.leadId).join(","))}`);
+  }
+
   const pageChecked = filtered.length > 0 && filtered.every((lead) => selection.includes(lead));
 
   return (
     <>
       <input id="lead-csv-file" type="file" accept=".csv,text/csv" onChange={importCsv} hidden />
 
-      <Card className="section">
+      <div className="workspace-full section">
         {importError ? (
           <Notice tone="warning" icon={<IconUpload />}>
             {importError}
@@ -183,6 +205,40 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
           </Notice>
         ) : null}
 
+        <CardHead title="Upload overview" display />
+        <div className="card-body">
+          <div className="grid-4">
+            <Card className="state-card">
+              <div className="state-card-head">Imported</div>
+              <div className="state-card-body">
+                <span className="metric-value">{uploadStats.total.toLocaleString()}</span>
+                <span className="subtle">{selectedImportId === "all" ? "All uploads" : "Selected upload"}</span>
+              </div>
+            </Card>
+            <Card className="state-card">
+              <div className="state-card-head">Email found</div>
+              <div className="state-card-body">
+                <span className="metric-value">{uploadStats.found.toLocaleString()}</span>
+                <span className="subtle">Ready for campaigns</span>
+              </div>
+            </Card>
+            <Card className="state-card">
+              <div className="state-card-head">In progress</div>
+              <div className="state-card-body">
+                <span className="metric-value">{uploadStats.inFlight.toLocaleString()}</span>
+                <span className="subtle">Queued or processing</span>
+              </div>
+            </Card>
+            <Card className="state-card">
+              <div className="state-card-head">Not found</div>
+              <div className="state-card-body">
+                <span className="metric-value">{uploadStats.notFound.toLocaleString()}</span>
+                <span className="subtle">{uploadStats.eligible.toLocaleString()} still eligible</span>
+              </div>
+            </Card>
+          </div>
+        </div>
+
         <div className="filter-bar">
           <div className="search-field filter-search">
             <IconSearch />
@@ -195,6 +251,23 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
               aria-label="Search leads"
             />
           </div>
+
+          <select
+            className="select"
+            value={selectedImportId}
+            onChange={(event) => {
+              setSelectedImportId(event.target.value);
+              clearSelection();
+            }}
+            aria-label="Upload"
+          >
+            <option value="all">All uploads</option>
+            {imports.map((item) => (
+              <option key={item.importId} value={item.importId}>
+                {item.fileName}
+              </option>
+            ))}
+          </select>
 
           <select
             className="select"
@@ -257,9 +330,16 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
             <button type="button" className="btn btn-ghost" onClick={clearSelection}>
               Clear
             </button>
-            <button type="button" className="btn btn-primary" onClick={findEmails} disabled={eligible.length === 0 || enriching}>
-              {enriching ? "Queuing..." : `Find emails for ${eligible.length.toLocaleString()}`}
-            </button>
+            {campaignReady.length > 0 ? (
+              <button type="button" className="btn btn-primary" onClick={createCampaign}>
+                Create campaign for {campaignReady.length.toLocaleString()}
+              </button>
+            ) : null}
+            {eligible.length > 0 ? (
+              <button type="button" className="btn btn-secondary" onClick={findEmails} disabled={enriching}>
+                {enriching ? "Queuing..." : `Find emails for ${eligible.length.toLocaleString()}`}
+              </button>
+            ) : null}
           </div>
         ) : null}
 
@@ -331,7 +411,7 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
             </div>
           )}
         </div>
-      </Card>
+      </div>
 
       <div className="grid-2 section">
         <Card>
@@ -356,6 +436,16 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
                       </div>
                     </div>
                     <div className="spacer" />
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => {
+                        setSelectedImportId(item.importId);
+                        clearSelection();
+                      }}
+                    >
+                      View upload
+                    </button>
                     <StatusPill label={item.status === "completed" ? "Completed" : "In progress"} tone="neutral" />
                   </div>
                 ))}
@@ -376,7 +466,7 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
               <li>Results write back to the lead with the enrichment batch that produced them.</li>
             </ol>
             <p className="subtle" style={{ fontSize: 12.5 }}>
-              No enrichment run has been started from this build — the actors are not called yet.
+              The worker writes results back to Supabase, then this page updates from the same lead records.
             </p>
           </div>
         </Card>

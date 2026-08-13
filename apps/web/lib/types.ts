@@ -60,6 +60,7 @@ export type Lead = EntityLineage & {
   email?: string;
   emailStatus: LeadStatus;
   sourceFile: string;
+  importIds?: string[];
   /** Set while a lead is enrolled in a running campaign; such leads are skipped. */
   activeCampaignId?: string;
 };
@@ -174,4 +175,17 @@ export type InboxThread = EntityLineage & {
   lastMessageAt: string;
   status: ThreadStatus;
   preview: string;
+};
+
+export type InboxMessage = EntityLineage & {
+  threadId?: string;
+  mailboxId: string;
+  leadId?: string;
+  campaignId?: string;
+  direction: "inbound" | "outbound";
+  subject: string;
+  bodyText: string;
+  bodyPreview: string;
+  sentAt?: string;
+  receivedAt?: string;
 };

@@ -61,6 +61,7 @@ function MailboxCard({ mailbox }: { mailbox: Mailbox }) {
   const router = useRouter();
   const available = availableToday(mailbox);
   const [editing, setEditing] = useState(false);
+  const [senderName, setSenderName] = useState(mailbox.displayName);
   const [dailyHardLimit, setDailyHardLimit] = useState(mailbox.dailyHardLimit);
   const [hourlyHardLimit, setHourlyHardLimit] = useState(mailbox.hourlyHardLimit);
   const [windowStart, setWindowStart] = useState(mailbox.sendingWindowStart);
@@ -81,6 +82,7 @@ function MailboxCard({ mailbox }: { mailbox: Mailbox }) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         mailboxId: mailbox.mailboxId,
+        displayName: senderName,
         dailyHardLimit,
         hourlyHardLimit,
         sendingWindowStart: windowStart,
@@ -169,6 +171,16 @@ function MailboxCard({ mailbox }: { mailbox: Mailbox }) {
 
       {editing ? (
         <form className="stack" style={{ gap: "var(--s-3)" }} onSubmit={saveLimits}>
+          <div className="field">
+            <label htmlFor={`${mailbox.mailboxId}-sender-name`}>Sender display name</label>
+            <input
+              id={`${mailbox.mailboxId}-sender-name`}
+              className="input"
+              value={senderName}
+              onChange={(event) => setSenderName(event.target.value)}
+            />
+          </div>
+
           <div className="field-row">
             <div className="field">
               <label htmlFor={`${mailbox.mailboxId}-daily`}>Daily hard limit</label>

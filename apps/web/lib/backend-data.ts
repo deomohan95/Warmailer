@@ -7,6 +7,7 @@ import type {
   Campaign,
   CampaignActivity,
   CampaignEventType,
+  InboxMessage,
   InboxThread,
   Lead,
   LeadImport,
@@ -46,6 +47,11 @@ type LeadRow = {
   last_enriched_at?: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type LeadImportLinkRow = {
+  lead_id: string | null;
+  import_id: string;
 };
 
 type ImportRow = {
@@ -156,6 +162,22 @@ type InboxThreadRow = {
   updated_at: string;
 };
 
+type InboxMessageRow = {
+  id: string;
+  workspace_id: string;
+  thread_id: string | null;
+  campaign_id: string | null;
+  lead_id: string | null;
+  mailbox_id: string;
+  direction: InboxMessage["direction"];
+  subject: string;
+  body_text: string;
+  body_preview: string;
+  sent_at: string | null;
+  received_at: string | null;
+  created_at: string;
+};
+
 export function parseDotenv(text: string): Env {
   return Object.fromEntries(
     text
@@ -261,7 +283,7 @@ function eventType(value: string): CampaignEventType {
   return map[value] ?? "scheduled";
 }
 
-export function mapLeadRow(row: LeadRow): Lead {
+export function mapLeadRow(row: LeadRow, importIds: string[] = []): Lead {
   const emailStatus: LeadStatus = row.email_status === "found" ? "email_found" : row.email_status;
   return {
     workspaceId: row.workspace_id,
@@ -280,6 +302,7 @@ export function mapLeadRow(row: LeadRow): Lead {
     email: row.email ?? undefined,
     emailStatus,
     sourceFile: row.source_file ?? "",
+    importIds,
   };
 }
 
@@ -350,14 +373,19 @@ export function mapCampaignRow(row: CampaignRow): Campaign {
   };
 }
 
-function mapCampaignDetail(row: CampaignDetailRow, sequence: SequenceStep[], mailboxIds: string[]): Campaign {
+function mapCampaignDetail(
+  row: CampaignDetailRow,
+  sequence: SequenceStep[],
+  mailboxIds: string[],
+  selectedLeadCount = 0,
+): Campaign {
   return {
     ...mapCampaignRow({
       campaign_id: row.campaign_id,
       workspace_id: row.workspace_id,
       name: row.name,
       status: row.status,
-      selected_lead_count: 0,
+      selected_lead_count: selectedLeadCount,
       selected_mailbox_count: mailboxIds.length,
       daily_capacity: 0,
       last_activity_at: row.last_activity_at,
@@ -414,6 +442,27 @@ export function mapInboxThreadRow(row: InboxThreadRow): InboxThread {
   };
 }
 
+export function mapInboxMessageRow(row: InboxMessageRow): InboxMessage {
+  return {
+    workspaceId: row.workspace_id,
+    source: row.direction === "inbound" ? "zoho_mail" : "user_action",
+    entityId: row.id,
+    messageId: row.id,
+    threadId: row.thread_id ?? undefined,
+    mailboxId: row.mailbox_id,
+    leadId: row.lead_id ?? undefined,
+    campaignId: row.campaign_id ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.received_at ?? row.sent_at ?? row.created_at,
+    direction: row.direction,
+    subject: row.subject,
+    bodyText: row.body_text,
+    bodyPreview: row.body_preview,
+    sentAt: row.sent_at ?? undefined,
+    receivedAt: row.received_at ?? undefined,
+  };
+}
+
 export const getActiveWorkspace = cache(async (): Promise<ActiveWorkspace> => {
   const params = new URLSearchParams({
     select: "id,name",
@@ -456,10 +505,18 @@ export async function getDashboardData() {
 }
 
 export async function getLeads(workspaceId: string) {
-  const rows = await rest<LeadRow[]>(
-    `lead_list?workspace_id=eq.${workspaceId}&select=*&order=created_at.desc&limit=500`,
-  );
-  return rows.map(mapLeadRow);
+  const [rows, links] = await Promise.all([
+    rest<LeadRow[]>(`lead_list?workspace_id=eq.${workspaceId}&select=*&order=created_at.desc&limit=500`),
+    rest<LeadImportLinkRow[]>(
+      `lead_import_rows?workspace_id=eq.${workspaceId}&action=in.(inserted,updated)&select=lead_id,import_id&limit=5000`,
+    ),
+  ]);
+  const byLead = new Map<string, string[]>();
+  for (const link of links) {
+    if (link.lead_id) byLead.set(link.lead_id, [...(byLead.get(link.lead_id) ?? []), link.import_id]);
+  }
+
+  return rows.map((row) => mapLeadRow(row, byLead.get(row.lead_id) ?? []));
 }
 
 export async function getImports(workspaceId: string) {
@@ -513,9 +570,9 @@ export async function getCampaignDetail(workspaceId: string, campaignId: string)
   }));
   const mailboxIds = mailboxRows.map((mailbox) => mailbox.mailbox_id);
   const leadIds = new Set(campaignLeadRows.map((lead) => lead.lead_id));
-  const campaign = mapCampaignDetail(row, sequence, mailboxIds);
+  const campaign = mapCampaignDetail(row, sequence, mailboxIds, campaignLeadRows.length);
   const selectedMailboxes = mailboxes.filter((mailbox) => mailboxIds.includes(mailbox.mailboxId));
-  const leads = leadRows.filter((lead) => leadIds.has(lead.lead_id)).map(mapLeadRow);
+  const leads = leadRows.filter((lead) => leadIds.has(lead.lead_id)).map((lead) => mapLeadRow(lead));
 
   return { campaign, leads, mailboxes: selectedMailboxes, activity };
 }
@@ -533,4 +590,11 @@ export async function getInboxThreads(workspaceId: string) {
     `inbox_thread_list?workspace_id=eq.${workspaceId}&select=*&order=last_message_at.desc&limit=200`,
   );
   return rows.map(mapInboxThreadRow);
+}
+
+export async function getInboxMessages(workspaceId: string) {
+  const rows = await rest<InboxMessageRow[]>(
+    `messages?workspace_id=eq.${workspaceId}&select=*&order=created_at.asc&limit=1000`,
+  );
+  return rows.map(mapInboxMessageRow);
 }

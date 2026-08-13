@@ -1,24 +1,23 @@
 import { InboxWorkspace } from "@/components/inbox/inbox-workspace";
 import { PageHeader } from "@/components/ui/primitives";
-import { getActiveWorkspace, getInboxThreads, getMailboxes } from "@/lib/backend-data";
+import { getActiveWorkspace, getCampaigns, getInboxMessages, getInboxThreads, getMailboxes } from "@/lib/backend-data";
 
 export const metadata = { title: "Inbox · Warmailer" };
 
 export default async function InboxPage() {
   const workspace = await getActiveWorkspace();
-  const [threads, mailboxes] = await Promise.all([
+  const [threads, messages, mailboxes, campaigns] = await Promise.all([
     getInboxThreads(workspace.workspaceId),
+    getInboxMessages(workspace.workspaceId),
     getMailboxes(workspace.workspaceId),
+    getCampaigns(workspace.workspaceId),
   ]);
 
   return (
-    <main className="page">
-      <PageHeader
-        title="Inbox"
-        description="Every reply from every connected mailbox, in one place, with the lead and campaign it came from."
-      />
+    <main className="page page-fit">
+      <PageHeader title="Inbox" />
 
-      <InboxWorkspace threads={threads} mailboxes={mailboxes} />
+      <InboxWorkspace threads={threads} messages={messages} mailboxes={mailboxes} campaigns={campaigns} />
     </main>
   );
 }

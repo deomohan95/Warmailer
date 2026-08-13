@@ -4,9 +4,17 @@
   "type": "module",
   "scripts": {
     "enrich": "node src/enrichment-worker.mjs",
+    "mail": "node src/mail-worker.mjs",
+    "mail:sync": "node src/mail-worker.mjs --sync-only",
+    "mail:send": "node src/mail-worker.mjs --send-only",
     "test": "node --test"
   },
   "engines": {
     "node": ">=22"
+  },
+  "dependencies": {
+    "imapflow": "^1.1.1",
+    "mailparser": "^3.7.3",
+    "nodemailer": "^7.0.5"
   }
 }

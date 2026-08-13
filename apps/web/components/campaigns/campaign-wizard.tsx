@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { IconAlert, IconCheck, IconLeads, IconMailbox } from "@/components/icons";
@@ -30,7 +31,16 @@ const TIMEZONES = ["Europe/London", "Europe/Berlin", "America/New_York", "Asia/K
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-const emptySequence: SequenceStep[] = [{ stepId: "step_1", subject: "", body: "", delayDays: 0 }];
+type SupportedVariable = (typeof SUPPORTED_VARIABLES)[number];
+
+const emptySequence: SequenceStep[] = [
+  {
+    stepId: "step_1",
+    subject: "Quick question about {{company}}",
+    body: "Hi {{first_name}},\n\nI wanted to ask about {{company}}.\n\nBest,",
+    delayDays: 0,
+  },
+];
 
 const defaultSchedule: CampaignSchedule = {
   startDate: "",
@@ -42,18 +52,41 @@ const defaultSchedule: CampaignSchedule = {
   timezone: TIMEZONES[0] as string,
 };
 
-export function CampaignWizard({ leads, mailboxes }: { leads: Lead[]; mailboxes: Mailbox[] }) {
-  const [step, setStep] = useState(0);
+export function CampaignWizard({
+  leads,
+  mailboxes,
+  initialLeadIds = [],
+}: {
+  leads: Lead[];
+  mailboxes: Mailbox[];
+  initialLeadIds?: string[];
+}) {
+  const router = useRouter();
+  const leadIdSet = useMemo(() => new Set(leads.map((lead) => lead.leadId)), [leads]);
+  const validInitialLeadIds = useMemo(
+    () => initialLeadIds.filter((leadId) => leadIdSet.has(leadId)),
+    [initialLeadIds, leadIdSet],
+  );
+  const [step, setStep] = useState(validInitialLeadIds.length > 0 ? 1 : 0);
   const [name, setName] = useState("");
   const [timezone, setTimezone] = useState(TIMEZONES[0] as string);
-  const [leadIds, setLeadIds] = useState<string[]>([]);
+  const [leadIds, setLeadIds] = useState<string[]>(validInitialLeadIds);
   const [mailboxIds, setMailboxIds] = useState<string[]>([]);
   const [sequence, setSequence] = useState<SequenceStep[]>(emptySequence);
   const [schedule, setSchedule] = useState<CampaignSchedule>(defaultSchedule);
+  const [launching, setLaunching] = useState(false);
+  const [launchError, setLaunchError] = useState("");
 
   const selectedLeads = useMemo(
     () => leads.filter((lead) => leadIds.includes(lead.leadId)),
     [leads, leadIds],
+  );
+  const visibleLeads = useMemo(
+    () =>
+      validInitialLeadIds.length > 0
+        ? leads.filter((lead) => validInitialLeadIds.includes(lead.leadId))
+        : leads,
+    [leads, validInitialLeadIds],
   );
   const selectedMailboxes = useMemo(
     () => mailboxes.filter((mailbox) => mailboxIds.includes(mailbox.mailboxId)),
@@ -86,11 +119,51 @@ export function CampaignWizard({ leads, mailboxes }: { leads: Lead[]; mailboxes:
     setSequence((current) => current.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   }
 
+  function insertBodyVariable(index: number, variable: string, position?: number) {
+    const token = `{{${variable}}}`;
+    setSequence((current) =>
+      current.map((item, i) => {
+        if (i !== index) return item;
+        const body =
+          position === undefined
+            ? `${item.body}${item.body ? " " : ""}${token}`
+            : `${item.body.slice(0, position)}${token}${item.body.slice(position)}`;
+        return { ...item, body };
+      }),
+    );
+  }
+
   function addFollowUp() {
     setSequence((current) => [
       ...current,
       { stepId: `step_${current.length + 1}`, subject: "", body: "", delayDays: 3 },
     ]);
+  }
+
+  async function launchCampaign() {
+    setLaunching(true);
+    setLaunchError("");
+
+    try {
+      const response = await fetch("/api/campaigns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name,
+          leadIds: eligible.map((lead) => lead.leadId),
+          mailboxIds,
+          sequence,
+          schedule: effectiveSchedule,
+        }),
+      });
+      const data = (await response.json()) as { campaignId?: string; error?: string };
+      if (!response.ok || !data.campaignId) throw new Error(data.error ?? "Campaign launch failed");
+      router.push(`/campaigns/${data.campaignId}`);
+    } catch (error) {
+      setLaunchError(error instanceof Error ? error.message : "Campaign launch failed");
+    } finally {
+      setLaunching(false);
+    }
   }
 
   return (
@@ -175,7 +248,7 @@ export function CampaignWizard({ leads, mailboxes }: { leads: Lead[]; mailboxes:
                         </tr>
                       </thead>
                       <tbody>
-                        {leads.map((lead) => (
+                        {visibleLeads.map((lead) => (
                           <tr key={lead.leadId}>
                             <td className="col-select">
                               <input
@@ -305,20 +378,36 @@ export function CampaignWizard({ leads, mailboxes }: { leads: Lead[]; mailboxes:
                         className="textarea"
                         value={item.body}
                         onChange={(event) => updateStep(index, { body: event.target.value })}
+                        onDrop={(event) => {
+                          const token = event.dataTransfer.getData("text/plain");
+                          const variable = token.match(/^\{\{(.+)\}\}$/)?.[1] as SupportedVariable | undefined;
+                          if (!variable || !SUPPORTED_VARIABLES.includes(variable)) return;
+                          event.preventDefault();
+                          insertBodyVariable(index, variable, event.currentTarget.selectionStart);
+                        }}
                         placeholder={"Hi {{first_name}},\n\n…"}
                       />
+                      <div className="row" style={{ gap: "var(--s-2)", flexWrap: "wrap" }}>
+                        <span className="field-hint">Insert variable — click or drag</span>
+                        {SUPPORTED_VARIABLES.map((variable) => (
+                          <button
+                            key={variable}
+                            type="button"
+                            className="tag"
+                            draggable
+                            onDragStart={(event) => {
+                              event.dataTransfer.effectAllowed = "copy";
+                              event.dataTransfer.setData("text/plain", `{{${variable}}}`);
+                            }}
+                            onClick={() => insertBodyVariable(index, variable)}
+                          >
+                            {`{{${variable}}}`}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 ))}
-
-                <div className="row" style={{ gap: "var(--s-2)", flexWrap: "wrap" }}>
-                  <span className="muted" style={{ fontSize: 12.5 }}>
-                    Available variables:
-                  </span>
-                  {SUPPORTED_VARIABLES.map((variable) => (
-                    <code key={variable} className="tag">{`{{${variable}}}`}</code>
-                  ))}
-                </div>
 
                 {unresolved.length > 0 ? (
                   <Notice tone="critical" icon={<IconAlert />}>
@@ -470,6 +559,11 @@ export function CampaignWizard({ leads, mailboxes }: { leads: Lead[]; mailboxes:
                     All launch checks pass.
                   </Notice>
                 )}
+                {launchError ? (
+                  <Notice tone="critical" icon={<IconAlert />}>
+                    {launchError}
+                  </Notice>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -493,8 +587,13 @@ export function CampaignWizard({ leads, mailboxes }: { leads: Lead[]; mailboxes:
               Continue
             </button>
           ) : (
-            <button type="button" className="btn btn-primary btn-lg" disabled={blockers.length > 0}>
-              Launch campaign
+            <button
+              type="button"
+              className="btn btn-primary btn-lg"
+              disabled={blockers.length > 0 || launching}
+              onClick={launchCampaign}
+            >
+              {launching ? "Launching..." : "Launch campaign"}
             </button>
           )}
           <div className="spacer" />

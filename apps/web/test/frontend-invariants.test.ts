@@ -112,6 +112,50 @@ describe("backend wiring", () => {
     expect(component).toContain("setEnrichmentMessage");
     expect(component).toContain("batchId");
   });
+
+  it("lets leads be filtered and summarized by upload", async () => {
+    const component = await source("components/leads/leads-workspace.tsx");
+
+    expect(component).toContain("selectedImportId");
+    expect(component).toContain('aria-label="Upload"');
+    expect(component).toContain("Upload overview");
+  });
+
+  it("can open the campaign builder with selected found leads preloaded", async () => {
+    const leads = await source("components/leads/leads-workspace.tsx");
+    const page = await source("app/(app)/campaigns/new/page.tsx");
+    const wizard = await source("components/campaigns/campaign-wizard.tsx");
+
+    expect(leads).toContain("createCampaign");
+    expect(leads).toContain("/campaigns/new?leadIds=");
+    expect(page).toContain("searchParams");
+    expect(page).toContain("initialLeadIds");
+    expect(wizard).toContain("initialLeadIds");
+    expect(wizard).toContain("visibleLeads");
+    expect(wizard).toContain("validInitialLeadIds.length > 0");
+  });
+
+  it("helps campaign body copy use supported variables", async () => {
+    const wizard = await source("components/campaigns/campaign-wizard.tsx");
+
+    expect(wizard).toContain("Hi {{first_name}}");
+    expect(wizard).toContain("insertBodyVariable");
+    expect(wizard).toContain("Insert variable");
+    expect(wizard).toContain("draggable");
+    expect(wizard).not.toContain("Available variables:");
+  });
+
+  it("launches campaigns through the backend with selected leads, mailboxes, sequence and schedule", async () => {
+    const wizard = await source("components/campaigns/campaign-wizard.tsx");
+    const route = await source("app/api/campaigns/route.ts");
+
+    expect(wizard).toContain('fetch("/api/campaigns"');
+    expect(wizard).toContain("eligible.map");
+    expect(wizard).toContain("router.push(`/campaigns/${data.campaignId}`)");
+    for (const table of ["campaigns", "campaign_leads", "campaign_mailboxes", "campaign_sequence_steps"]) {
+      expect(route).toMatch(new RegExp(`supabasePost\\(\\s*"${table}"`));
+    }
+  });
 });
 
 describe("app icon", () => {
@@ -204,6 +248,15 @@ describe("app passwords are write-only", () => {
     expect(route).toContain("export async function PATCH");
     expect(route).toContain("limits_updated");
   });
+
+  it("lets saved mailbox sender display names be edited", async () => {
+    const component = await source("components/mailboxes/mailboxes-workspace.tsx");
+    const route = await source("app/api/mailboxes/route.ts");
+
+    expect(component).toContain("senderName");
+    expect(component).toContain("Sender display name");
+    expect(route).toContain("display_name: input.displayName");
+  });
 });
 
 describe("inbox empty states", () => {
@@ -211,8 +264,82 @@ describe("inbox empty states", () => {
     const component = await source("components/inbox/inbox-workspace.tsx");
 
     expect(component).toContain("const hasMailbox = mailboxes.length > 0");
-    expect(component).toContain("Zoho inbox sync worker is wired");
+    expect(component).toContain("Zoho inbox sync worker pulls them");
     expect(component).toContain("hasMailbox ? undefined");
+  });
+
+  it("lets the user reply through the same Zoho thread", async () => {
+    const component = await source("components/inbox/inbox-workspace.tsx");
+    const route = await source("app/api/inbox/reply/route.ts");
+
+    expect(component).toContain('fetch("/api/inbox/reply"');
+    expect(component).not.toContain("Replying is not wired to Zoho yet.");
+    expect(route).toContain("inReplyTo");
+    expect(route).toContain("message_events");
+    expect(route).toContain("smtp_accepted");
+  });
+
+  it("renders the inbox as a master mailbox with folders, filters, sorting and full message trail", async () => {
+    const page = await source("app/(app)/inbox/page.tsx");
+    const component = await source("components/inbox/inbox-workspace.tsx");
+
+    expect(page).toContain("getInboxMessages");
+    expect(page).toContain("getCampaigns");
+    expect(component).toContain("folder");
+    expect(component).toContain("Sent");
+    expect(component).toContain("Campaign");
+    expect(component).toContain("Mailbox");
+    expect(component).toContain("Latest first");
+    expect(component).toContain("conversationMessages.map");
+    expect(component).not.toContain('<div className="message-body">{selected.preview}</div>');
+  });
+
+  it("keeps Inbox and Leads as full-page workspaces without header explainer copy", async () => {
+    const inboxPage = await source("app/(app)/inbox/page.tsx");
+    const leadsPage = await source("app/(app)/leads/page.tsx");
+    const inbox = await source("components/inbox/inbox-workspace.tsx");
+    const leads = await source("components/leads/leads-workspace.tsx");
+    const styles = await source("app/styles/pages.css");
+
+    expect(inboxPage).not.toContain("Every reply from every connected mailbox");
+    expect(leadsPage).not.toContain("Every lead in this workspace");
+    expect(inboxPage).toContain('className="page page-fit"');
+    expect(inbox).toContain('className="workspace-full"');
+    expect(leads).toContain('className="workspace-full section"');
+    expect(inbox).not.toContain('<Card>\n      <div className="inbox-toolbar">');
+    expect(leads).not.toContain('<Card className="section">');
+    expect(styles).toContain(".page-fit");
+    expect(styles).toContain("height: calc(100dvh - 160px)");
+  });
+
+  it("aligns the inbox trail by sender direction and trims quoted reply history", async () => {
+    const component = await source("components/inbox/inbox-workspace.tsx");
+    const styles = await source("app/styles/pages.css");
+
+    expect(component).toContain("message.direction === \"outbound\" ? \"message-card message-card-outbound\"");
+    expect(component).toContain("cleanMessageBody");
+    expect(component).toContain("/\\nOn .+ wrote:\\n/s");
+    expect(styles).toContain(".message-card-outbound");
+    expect(styles).toContain(".message-card-inbound");
+    expect(styles).toContain("justify-self: end");
+  });
+
+  it("does not duplicate outbound messages that already belong to a thread in Sent", async () => {
+    const component = await source("components/inbox/inbox-workspace.tsx");
+
+    expect(component).toContain("hasOutbound");
+    expect(component).toContain("!threads.some((thread) => belongsToThread(message, thread))");
+    expect(component).toContain('if (folder === "sent") return item.hasOutbound');
+  });
+
+  it("lets real threads be archived or returned to inbox through the backend", async () => {
+    const component = await source("components/inbox/inbox-workspace.tsx");
+    const route = await source("app/api/inbox/status/route.ts");
+
+    expect(component).toContain('fetch("/api/inbox/status"');
+    expect(route).toContain("export async function PATCH");
+    expect(route).toContain("archived");
+    expect(route).toContain("revalidatePath(\"/inbox\")");
   });
 });
 

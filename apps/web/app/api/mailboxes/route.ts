@@ -23,6 +23,7 @@ type MailboxInput = {
 
 type MailboxUpdateInput = {
   mailboxId?: string;
+  displayName?: string;
   dailyHardLimit?: number;
   hourlyHardLimit?: number;
   sendingWindowStart?: string;
@@ -85,6 +86,7 @@ export async function PATCH(request: Request) {
     await supabasePatch(
       `mailboxes?id=eq.${encodeURIComponent(input.mailboxId)}&workspace_id=eq.${encodeURIComponent(workspace.workspaceId)}`,
       {
+        display_name: input.displayName,
         daily_hard_limit: input.dailyHardLimit,
         hourly_hard_limit: input.hourlyHardLimit,
         sending_window_start: input.sendingWindowStart,
@@ -102,6 +104,7 @@ export async function PATCH(request: Request) {
       metadata: {
         dailyHardLimit: input.dailyHardLimit,
         hourlyHardLimit: input.hourlyHardLimit,
+        displayName: input.displayName,
       },
       created_at: now,
     });
@@ -153,6 +156,7 @@ function validate(input: MailboxInput) {
 
 function validateUpdate(input: MailboxUpdateInput) {
   const mailboxId = String(input.mailboxId ?? "").trim();
+  const displayName = String(input.displayName ?? "").trim();
   const dailyHardLimit = Number(input.dailyHardLimit);
   const hourlyHardLimit = Number(input.hourlyHardLimit);
   const sendingWindowStart = String(input.sendingWindowStart ?? "09:00");
@@ -172,7 +176,7 @@ function validateUpdate(input: MailboxUpdateInput) {
   if (sendingWindowStart >= sendingWindowEnd) throw new Error("Sending window must close after it opens");
   if (!timezone) throw new Error("Timezone is required");
 
-  return { mailboxId, dailyHardLimit, hourlyHardLimit, sendingWindowStart, sendingWindowEnd, timezone };
+  return { mailboxId, displayName, dailyHardLimit, hourlyHardLimit, sendingWindowStart, sendingWindowEnd, timezone };
 }
 
 async function supabasePost(table: string, body: unknown) {

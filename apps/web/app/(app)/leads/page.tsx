@@ -13,7 +13,6 @@ export default async function LeadsPage() {
     <main className="page">
       <PageHeader
         title="Leads"
-        description="Every lead in this workspace, with its import origin and email-enrichment state. Importing and finding emails both happen here."
         actions={
           <label htmlFor="lead-csv-file" className="btn btn-primary">
             <IconUpload />

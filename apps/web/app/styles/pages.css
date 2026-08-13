@@ -22,6 +22,34 @@
   margin-top: var(--s-6);
 }
 
+.workspace-full {
+  width: 100%;
+}
+
+.page-fit {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.page-fit .workspace-full {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - 160px);
+  min-height: 0;
+}
+
+.page-fit .inbox {
+  flex: 1;
+  min-height: 0;
+}
+
+.page-fit .thread-list,
+.page-fit .reading-pane {
+  max-height: none;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 /* A single child that should occupy the whole two-column row. */
 .span-2 {
   grid-column: 1 / -1;
@@ -211,6 +239,16 @@
 
 /* ---------- Inbox ---------- */
 
+.inbox-toolbar {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-4) 0;
+}
+
+.inbox-filters {
+  padding: 0 0 var(--s-3);
+}
+
 .inbox {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
@@ -287,6 +325,38 @@
   min-width: 0;
 }
 
+.inbox-pane {
+  gap: var(--s-4);
+  padding: var(--s-4);
+}
+
+.message-trail {
+  display: grid;
+  gap: var(--s-3);
+}
+
+.message-card {
+  display: grid;
+  gap: var(--s-2);
+  max-width: min(760px, 88%);
+}
+
+.message-card-inbound {
+  justify-self: start;
+}
+
+.message-card-outbound {
+  justify-self: end;
+}
+
+.message-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-3);
+  color: var(--ink-2);
+  font-size: 12.5px;
+}
+
 .message-body {
   padding: var(--s-4);
   border: 1px solid var(--line);
@@ -295,6 +365,7 @@
   font-size: 13.5px;
   line-height: 1.65;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .lead-context {
