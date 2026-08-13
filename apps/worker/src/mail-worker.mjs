@@ -34,10 +34,13 @@ export function loadMailConfig(env = process.env) {
     imapHost: value("ZOHO_IMAP_HOST") ?? "imap.zoho.com",
     imapPort: Number(value("ZOHO_IMAP_PORT") ?? 993),
     sendLimit: Number(value("MAIL_WORKER_SEND_LIMIT") ?? 25),
+    trackingBaseUrl: value("TRACKING_BASE_URL")?.replace(/\/$/, ""),
+    trackingHmacKey: Buffer.from(value("TRACKING_HMAC_KEY") ?? "", "base64"),
   };
 
-  for (const key of ["supabaseUrl", "supabaseKey"]) if (!config[key]) throw new Error(`Missing ${key}`);
+  for (const key of ["supabaseUrl", "supabaseKey", "trackingBaseUrl"]) if (!config[key]) throw new Error(`Missing ${key}`);
   if (config.encryptionKey.length !== 32) throw new Error("Missing WORKER_ENCRYPTION_KEY");
+  if (config.trackingHmacKey.length !== 32) throw new Error("Missing TRACKING_HMAC_KEY");
   return config;
 }
 
@@ -49,6 +52,7 @@ export async function runMailWorker({ config = loadMailConfig(), fetchImpl = fet
         db,
         limit: config.sendLimit,
         decryptSecret: decrypt,
+        tracking: { baseUrl: config.trackingBaseUrl, hmacKey: config.trackingHmacKey },
         sendMail: (payload) => sendSmtp(payload, config),
       })
     : { campaigns: 0, sent: 0, skipped: 0, failed: 0 };

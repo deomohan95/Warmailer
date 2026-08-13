@@ -1,3 +1,5 @@
+import { createHmac } from "node:crypto";
+
 export function renderTemplate(text, lead) {
   const name = String(lead.name ?? "").trim();
   const firstName = name.split(/\s+/)[0] || name;
@@ -6,6 +8,14 @@ export function renderTemplate(text, lead) {
     .replaceAll("{{name}}", name)
     .replaceAll("{{company}}", String(lead.company ?? ""))
     .replaceAll("{{job_title}}", String(lead.job_title ?? ""));
+}
+
+export function buildOpenTrackingUrl({ baseUrl, hmacKey, workspaceId, messageId }) {
+  const url = new URL("/api/track/open", String(baseUrl).replace(/\/$/, ""));
+  url.searchParams.set("w", workspaceId);
+  url.searchParams.set("m", messageId);
+  url.searchParams.set("s", signOpen({ hmacKey, workspaceId, messageId }));
+  return url.toString();
 }
 
 export function isCampaignDue(campaign, now = new Date()) {
@@ -20,7 +30,7 @@ export function isCampaignDue(campaign, now = new Date()) {
   );
 }
 
-export async function sendDueCampaigns({ db, sendMail, decryptSecret, now = new Date(), limit = 25 }) {
+export async function sendDueCampaigns({ db, sendMail, decryptSecret, tracking, now = new Date(), limit = 25 }) {
   const summary = { campaigns: 0, sent: 0, skipped: 0, failed: 0 };
   const campaigns = (await db.getDueCampaigns()).filter((campaign) => isCampaignDue(campaign, now));
 
@@ -44,7 +54,7 @@ export async function sendDueCampaigns({ db, sendMail, decryptSecret, now = new 
       if (!mailbox) break;
 
       mailbox.available_today = Number(mailbox.available_today) - 1;
-      const sent = await sendCampaignLead({ db, sendMail, decryptSecret, campaign, step, lead, mailbox, now });
+      const sent = await sendCampaignLead({ db, sendMail, decryptSecret, campaign, step, lead, mailbox, now, tracking });
       summary[sent ? "sent" : "failed"]++;
     }
 
@@ -54,7 +64,7 @@ export async function sendDueCampaigns({ db, sendMail, decryptSecret, now = new 
   return summary;
 }
 
-async function sendCampaignLead({ db, sendMail, decryptSecret, campaign, step, lead, mailbox, now }) {
+async function sendCampaignLead({ db, sendMail, decryptSecret, campaign, step, lead, mailbox, now, tracking }) {
   const nowIso = now.toISOString();
   await db.markLeadQueued(lead.campaign_lead_id);
 
@@ -81,6 +91,13 @@ async function sendCampaignLead({ db, sendMail, decryptSecret, campaign, step, l
   });
 
   try {
+    const openUrl = tracking
+      ? buildOpenTrackingUrl({
+          ...tracking,
+          workspaceId: campaign.workspace_id,
+          messageId: message.id,
+        })
+      : null;
     const result = await sendMail({
       host: mailbox.smtp_host,
       port: mailbox.smtp_port,
@@ -90,6 +107,7 @@ async function sendCampaignLead({ db, sendMail, decryptSecret, campaign, step, l
       to: lead.email,
       subject,
       text: body,
+      ...(openUrl ? { html: renderHtml(body, openUrl) } : {}),
     });
     await db.markMessageAccepted(message.id, result.messageId, nowIso);
     await db.insertMessageEvent({
@@ -115,6 +133,21 @@ async function sendCampaignLead({ db, sendMail, decryptSecret, campaign, step, l
     });
     return false;
   }
+}
+
+function signOpen({ hmacKey, workspaceId, messageId }) {
+  return createHmac("sha256", hmacKey).update(`${workspaceId}:${messageId}`).digest("base64url");
+}
+
+function renderHtml(body, openUrl) {
+  return `${escapeHtml(body).replace(/\r?\n/g, "<br>")}<img src="${escapeHtml(openUrl)}" width="1" height="1" alt="" style="display:none" />`;
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => {
+    const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+    return map[char];
+  });
 }
 
 function zonedParts(now, timeZone) {

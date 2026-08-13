@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { sendDueCampaigns } from "../src/campaign-mailer.mjs";
+import { buildOpenTrackingUrl, sendDueCampaigns } from "../src/campaign-mailer.mjs";
 import { syncInboundReplies } from "../src/inbox-sync.mjs";
 import { buildSmtpReply, selectedMailJobs } from "../src/mail-worker.mjs";
 
@@ -75,6 +75,77 @@ test("sends due campaign leads through selected mailbox and records source rows"
   );
   assert.equal(calls.some((call) => call[0] === "accepted"), true);
   assert.equal(calls.some((call) => call[0] === "usage"), true);
+});
+
+test("adds a signed open tracking pixel to outbound campaign html", async () => {
+  const sent = [];
+  const db = {
+    getDueCampaigns: async () => [
+      {
+        id: "campaign-1",
+        workspace_id: "workspace-1",
+        status: "scheduled",
+        timezone: "UTC",
+        start_date: "2026-08-13",
+        sending_days: [],
+        sending_window_start: "00:00",
+        sending_window_end: "23:59",
+        max_sends_per_day: 1,
+      },
+    ],
+    getFirstSequenceStep: async () => ({ subject: "Hi", body: "Line 1\nLine <2>" }),
+    getSendableLeads: async () => [
+      { campaign_lead_id: "campaign-lead-1", lead_id: "lead-1", name: "Corey", email: "corey@example.com" },
+    ],
+    getUsableMailboxes: async () => [
+      {
+        id: "mailbox-1",
+        workspace_id: "workspace-1",
+        email_address: "sender@example.com",
+        display_name: "Sender",
+        encrypted_app_password: {},
+        available_today: 1,
+      },
+    ],
+    markCampaignSending: async () => {},
+    markLeadQueued: async () => {},
+    insertMessage: async (row) => ({ id: "message-1", ...row }),
+    insertMessageEvent: async () => {},
+    markMessageAccepted: async () => {},
+    markLeadSent: async () => {},
+    consumeMailboxSend: async () => {},
+    completeCampaignIfDone: async () => {},
+  };
+
+  await sendDueCampaigns({
+    db,
+    now: new Date("2026-08-13T07:00:00.000Z"),
+    decryptSecret: () => "app-password",
+    tracking: {
+      baseUrl: "https://warmailer-app.vercel.app/",
+      hmacKey: Buffer.alloc(32, 7),
+    },
+    sendMail: async (payload) => {
+      sent.push(payload);
+      return { messageId: "<zoho-1@example.com>" };
+    },
+  });
+
+  const html = sent[0].html;
+  assert.match(html, /^Line 1<br>Line &lt;2&gt;<img /);
+  assert.match(html, /src="https:\/\/warmailer-app\.vercel\.app\/api\/track\/open\?w=workspace-1&amp;m=message-1&amp;s=/);
+});
+
+test("builds deterministic signed open tracking urls", () => {
+  assert.equal(
+    buildOpenTrackingUrl({
+      baseUrl: "https://warmailer-app.vercel.app/",
+      hmacKey: Buffer.alloc(32, 7),
+      workspaceId: "workspace-1",
+      messageId: "message-1",
+    }),
+    "https://warmailer-app.vercel.app/api/track/open?w=workspace-1&m=message-1&s=rs_gcrmZkaQfNIC3_CjTfoXlLjolrrt6UQRT0FH0gwo",
+  );
 });
 
 test("syncs an inbound reply onto the original outbound thread", async () => {
