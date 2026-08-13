@@ -426,6 +426,7 @@ export const getActiveWorkspace = cache(async (): Promise<ActiveWorkspace> => {
     const preferred = await rest<WorkspaceRow[]>(`workspaces?${params}`);
     workspace = preferred[0] ?? (await rest<WorkspaceRow[]>("workspaces?select=id,name&limit=1"))[0];
   } catch {
+    // Keep local/dev pages usable when Supabase is temporarily unreachable.
   }
 
   return {

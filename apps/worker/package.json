@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "enrich": "node src/enrichment-worker.mjs",
     "test": "node --test"
   },
   "engines": {
