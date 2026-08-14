@@ -283,6 +283,34 @@ describe("app passwords are write-only", () => {
   });
 });
 
+describe("warmup wiring", () => {
+  it("loads warmup stats and seeds from backend data, not demo state", async () => {
+    const page = await source("app/(app)/mailboxes/page.tsx");
+    const data = await source("lib/warmup-data.ts");
+
+    expect(page).toContain("getWarmupMailboxStats");
+    expect(page).toContain("getWarmupSeeds");
+    expect(data).toContain("warmup_mailbox_stats");
+    expect(data).toContain("warmup_seed_accounts");
+  });
+
+  it("shows warmup metrics, controls, and Gmail seed count on mailboxes", async () => {
+    const component = await source("components/mailboxes/mailboxes-workspace.tsx");
+
+    expect(component).toContain('type MailboxTab = "mailboxes" | "warmup"');
+    expect(component).toContain('aria-label="Mailbox sections"');
+    expect(component).toContain("Warmup reputation");
+    expect(component).toContain("Saved from spam");
+    expect(component).toContain("Landed in inbox");
+    expect(component).toContain("Warmup emails sent");
+    expect(component).toContain("Gmail seed accounts");
+    expect(component).toContain("warmupDailyLimit");
+    expect(component).toContain("warmupDailyRampup");
+    expect(component).toContain("warmupRandomizeDailyCount");
+    expect(component).toContain("warmupReplyRatePercent");
+  });
+});
+
 describe("inbox empty states", () => {
   it("does not tell the user to connect a mailbox when one is already connected", async () => {
     const component = await source("components/inbox/inbox-workspace.tsx");

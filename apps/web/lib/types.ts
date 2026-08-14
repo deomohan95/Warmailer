@@ -106,6 +106,31 @@ export type Mailbox = EntityLineage &
     appPasswordConfigured: boolean;
   };
 
+export type WarmupMailboxStats = EntityLineage & {
+  mailboxId: string;
+  emailAddress: string;
+  warmupEnabled: boolean;
+  warmupDailyLimit: number;
+  warmupDailyRampup: number;
+  warmupRandomizeDailyCount: boolean;
+  warmupReplyRatePercent: number;
+  warmupStartedAt?: string;
+  sent7d: number;
+  inbox7d: number;
+  spam7d: number;
+  savedFromSpam7d: number;
+  replied7d: number;
+  reputation: number;
+};
+
+export type WarmupSeedAccount = EntityLineage & {
+  seedAccountId: string;
+  provider: "gmail";
+  emailAddress: string;
+  status: "connected" | "disabled" | "error";
+  lastCheckedAt?: string;
+};
+
 /* ---------- Campaigns ---------- */
 
 export type CampaignStatus = "draft" | "scheduled" | "sending" | "paused" | "completed" | "failed";

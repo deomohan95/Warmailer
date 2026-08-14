@@ -7,53 +7,420 @@ import { IconAlert, IconCheck, IconClock, IconLock, IconMailbox } from "@/compon
 import { Card, CardHead, EmptyState, Meter, Notice, StatusPill } from "@/components/ui/primitives";
 import { availableToday, campaignDailyCapacity, isSendable } from "@/lib/capacity";
 import { MAILBOX_STATUS } from "@/lib/labels";
-import type { Mailbox } from "@/lib/types";
+import type { Mailbox, WarmupMailboxStats, WarmupSeedAccount } from "@/lib/types";
 
 const TIMEZONES = ["Europe/London", "Europe/Berlin", "America/New_York", "Asia/Kolkata", "UTC"];
 
-export function MailboxesWorkspace({ mailboxes }: { mailboxes: Mailbox[] }) {
+type MailboxTab = "mailboxes" | "warmup";
+
+type WarmupFormState = {
+  warmupEnabled: boolean;
+  warmupDailyLimit: number;
+  warmupDailyRampup: number;
+  warmupRandomizeDailyCount: boolean;
+  warmupReplyRatePercent: number;
+};
+
+export function MailboxesWorkspace({
+  mailboxes,
+  warmupStats,
+  warmupSeeds,
+}: {
+  mailboxes: Mailbox[];
+  warmupStats: WarmupMailboxStats[];
+  warmupSeeds: WarmupSeedAccount[];
+}) {
+  const [activeTab, setActiveTab] = useState<MailboxTab>("mailboxes");
   const capacity = campaignDailyCapacity(mailboxes);
 
   return (
     <>
-      <Notice tone="accent" icon={<IconAlert />}>
-        These hard limits are the only source of send capacity. Campaigns read them; no campaign can raise them.
-        Capacity available today across all connected mailboxes:{" "}
-        <strong className="num">{capacity.toLocaleString()}</strong>.
-      </Notice>
+      <div className="tabs" role="tablist" aria-label="Mailbox sections">
+        <button
+          type="button"
+          role="tab"
+          className="tab"
+          aria-selected={activeTab === "mailboxes"}
+          onClick={() => setActiveTab("mailboxes")}
+        >
+          Mailboxes
+        </button>
+        <button
+          type="button"
+          role="tab"
+          className="tab"
+          aria-selected={activeTab === "warmup"}
+          onClick={() => setActiveTab("warmup")}
+        >
+          Warmup
+        </button>
+      </div>
 
-      <div className="grid-2 section">
-        {mailboxes.length === 0 ? (
-          <Card className="span-2">
-            <div className="card-body card-body-flush">
-              <EmptyState
-                icon={<IconMailbox />}
-                title="No mailbox connected yet"
-                description="Add a Zoho mailbox with its daily and hourly hard limits. Campaigns can only send through mailboxes added here."
+      {activeTab === "mailboxes" ? (
+        <>
+          <div className="section">
+            <Notice tone="accent" icon={<IconAlert />}>
+              These hard limits are the only source of send capacity. Campaigns read them; no campaign can raise them.
+              Capacity available today across all connected mailboxes:{" "}
+              <strong className="num">{capacity.toLocaleString()}</strong>.
+            </Notice>
+          </div>
+
+          <div className="grid-2 section">
+            {mailboxes.length === 0 ? (
+              <Card className="span-2">
+                <div className="card-body card-body-flush">
+                  <EmptyState
+                    icon={<IconMailbox />}
+                    title="No mailbox connected yet"
+                    description="Add a Zoho mailbox with its daily and hourly hard limits. Campaigns can only send through mailboxes added here."
+                  />
+                </div>
+              </Card>
+            ) : (
+              mailboxes.map((mailbox) => <MailboxCard key={mailbox.mailboxId} mailbox={mailbox} />)
+            )}
+          </div>
+
+          <div className="grid-2 section">
+            <AddMailboxForm />
+          </div>
+        </>
+      ) : (
+        <WarmupPanel mailboxes={mailboxes} warmupStats={warmupStats} warmupSeeds={warmupSeeds} />
+      )}
+    </>
+  );
+}
+
+function defaultWarmupState(stat?: WarmupMailboxStats): WarmupFormState {
+  return {
+    warmupEnabled: stat?.warmupEnabled ?? false,
+    warmupDailyLimit: stat?.warmupDailyLimit ?? 25,
+    warmupDailyRampup: stat?.warmupDailyRampup ?? 5,
+    warmupRandomizeDailyCount: stat?.warmupRandomizeDailyCount ?? true,
+    warmupReplyRatePercent: stat?.warmupReplyRatePercent ?? 20,
+  };
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function warmupIssue(mailbox: Mailbox, seeds: WarmupSeedAccount[]) {
+  if (seeds.length === 0) return "No Gmail seed account";
+  if (mailbox.status !== "connected" && mailbox.status !== "warming") return "Mailbox not connected";
+  if (!mailbox.appPasswordConfigured) return "Missing app password";
+  return "Ready";
+}
+
+function WarmupPanel({
+  mailboxes,
+  warmupStats,
+  warmupSeeds,
+}: {
+  mailboxes: Mailbox[];
+  warmupStats: WarmupMailboxStats[];
+  warmupSeeds: WarmupSeedAccount[];
+}) {
+  const router = useRouter();
+  const statsByMailbox = new Map(warmupStats.map((stat) => [stat.mailboxId, stat]));
+  const totals = warmupStats.reduce(
+    (acc, stat) => ({
+      sent7d: acc.sent7d + stat.sent7d,
+      inbox7d: acc.inbox7d + stat.inbox7d,
+      savedFromSpam7d: acc.savedFromSpam7d + stat.savedFromSpam7d,
+      replied7d: acc.replied7d + stat.replied7d,
+    }),
+    { sent7d: 0, inbox7d: 0, savedFromSpam7d: 0, replied7d: 0 },
+  );
+  const [forms, setForms] = useState<Record<string, WarmupFormState>>(() =>
+    Object.fromEntries(mailboxes.map((mailbox) => [mailbox.mailboxId, defaultWarmupState(statsByMailbox.get(mailbox.mailboxId))])),
+  );
+  const [seedForm, setSeedForm] = useState({
+    emailAddress: "",
+    composioUserId: "",
+    composioConnectedAccountId: "",
+  });
+  const [savingMailboxId, setSavingMailboxId] = useState<string | null>(null);
+  const [savingSeed, setSavingSeed] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function updateMailbox(mailboxId: string, patch: Partial<WarmupFormState>) {
+    setForms((current) => ({
+      ...current,
+      [mailboxId]: { ...defaultWarmupState(statsByMailbox.get(mailboxId)), ...current[mailboxId], ...patch },
+    }));
+  }
+
+  async function saveWarmupSettings(mailboxId: string) {
+    const state = forms[mailboxId] ?? defaultWarmupState(statsByMailbox.get(mailboxId));
+    setSavingMailboxId(mailboxId);
+    setMessage(null);
+    setError(null);
+
+    const response = await fetch("/api/warmup/mailboxes", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ mailboxId, ...state }),
+    });
+
+    setSavingMailboxId(null);
+
+    if (!response.ok) {
+      const result = (await response.json().catch(() => null)) as { error?: string } | null;
+      setError(result?.error ?? "Warmup update failed");
+      return;
+    }
+
+    setMessage("Warmup settings saved.");
+    router.refresh();
+  }
+
+  async function saveSeed(event: React.FormEvent) {
+    event.preventDefault();
+    setSavingSeed(true);
+    setMessage(null);
+    setError(null);
+
+    const response = await fetch("/api/warmup/seeds", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(seedForm),
+    });
+
+    setSavingSeed(false);
+
+    if (!response.ok) {
+      const result = (await response.json().catch(() => null)) as { error?: string } | null;
+      setError(result?.error ?? "Seed account save failed");
+      return;
+    }
+
+    setSeedForm({ emailAddress: "", composioUserId: "", composioConnectedAccountId: "" });
+    setMessage("Gmail seed account saved.");
+    router.refresh();
+  }
+
+  return (
+    <div className="stack section" style={{ gap: "var(--s-4)" }}>
+      <dl className="stat-strip">
+        <div className="stat-strip-head">
+          <h2>Warmup reputation</h2>
+          <p>Last 7 days across sender mailboxes.</p>
+        </div>
+        <div className="stat-row">
+          <div className="stat">
+            <dt>Warmup emails sent</dt>
+            <dd className="num">{totals.sent7d.toLocaleString()}</dd>
+          </div>
+          <div className="stat">
+            <dt>Landed in inbox</dt>
+            <dd className="num">{totals.inbox7d.toLocaleString()}</dd>
+          </div>
+          <div className="stat">
+            <dt>Saved from spam</dt>
+            <dd className="num">{totals.savedFromSpam7d.toLocaleString()}</dd>
+          </div>
+          <div className="stat">
+            <dt>Emails received/replied</dt>
+            <dd className="num">{totals.replied7d.toLocaleString()}</dd>
+          </div>
+        </div>
+      </dl>
+
+      {error ? (
+        <Notice tone="warning" icon={<IconAlert />}>
+          {error}
+        </Notice>
+      ) : null}
+      {message ? (
+        <Notice tone="accent" icon={<IconCheck />}>
+          {message}
+        </Notice>
+      ) : null}
+
+      <Card>
+        <CardHead title="Mailbox warmup" display />
+        <div className="card-body card-body-flush">
+          {mailboxes.length === 0 ? (
+            <EmptyState small icon={<IconMailbox />} title="No mailbox connected yet" />
+          ) : (
+            <div className="table-wrap">
+              <table className="table warmup-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Mailbox</th>
+                    <th scope="col">7d sent</th>
+                    <th scope="col">Limit</th>
+                    <th scope="col">Ramp</th>
+                    <th scope="col">Randomized</th>
+                    <th scope="col">Reply rate</th>
+                    <th scope="col">Reputation</th>
+                    <th scope="col">Issue</th>
+                    <th scope="col">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mailboxes.map((mailbox) => {
+                    const stat = statsByMailbox.get(mailbox.mailboxId);
+                    const state = forms[mailbox.mailboxId] ?? defaultWarmupState(stat);
+                    return (
+                      <tr key={mailbox.mailboxId}>
+                        <td>
+                          <div className="cell-strong">{mailbox.emailAddress}</div>
+                          <div className="cell-sub">{state.warmupEnabled ? "Warmup enabled" : "Warmup disabled"}</div>
+                        </td>
+                        <td className="num">
+                          {(stat?.sent7d ?? 0).toLocaleString()} / {state.warmupDailyLimit}
+                        </td>
+                        <td>
+                          <input
+                            className="input num warmup-number"
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={state.warmupDailyLimit}
+                            onChange={(event) =>
+                              updateMailbox(mailbox.mailboxId, {
+                                warmupDailyLimit: clamp(Number(event.target.value) || 1, 1, 100),
+                              })
+                            }
+                          />
+                        </td>
+                        <td>
+                          <input
+                            className="input num warmup-number"
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={state.warmupDailyRampup}
+                            onChange={(event) =>
+                              updateMailbox(mailbox.mailboxId, {
+                                warmupDailyRampup: clamp(Number(event.target.value) || 1, 1, 100),
+                              })
+                            }
+                          />
+                        </td>
+                        <td>
+                          <label className="check-row">
+                            <input
+                              type="checkbox"
+                              checked={state.warmupRandomizeDailyCount}
+                              onChange={(event) =>
+                                updateMailbox(mailbox.mailboxId, {
+                                  warmupRandomizeDailyCount: event.target.checked,
+                                })
+                              }
+                            />
+                            Randomize
+                          </label>
+                        </td>
+                        <td>
+                          <input
+                            className="input num warmup-number"
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={state.warmupReplyRatePercent}
+                            onChange={(event) =>
+                              updateMailbox(mailbox.mailboxId, {
+                                warmupReplyRatePercent: clamp(Number(event.target.value) || 0, 0, 100),
+                              })
+                            }
+                          />
+                        </td>
+                        <td className="num">{stat?.reputation ?? 100}%</td>
+                        <td>{warmupIssue(mailbox, warmupSeeds)}</td>
+                        <td>
+                          <div className="row" style={{ gap: "var(--s-2)", flexWrap: "wrap" }}>
+                            <label className="check-row">
+                              <input
+                                type="checkbox"
+                                checked={state.warmupEnabled}
+                                onChange={(event) =>
+                                  updateMailbox(mailbox.mailboxId, { warmupEnabled: event.target.checked })
+                                }
+                              />
+                              Enabled
+                            </label>
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              disabled={savingMailboxId === mailbox.mailboxId}
+                              onClick={() => saveWarmupSettings(mailbox.mailboxId)}
+                            >
+                              {savingMailboxId === mailbox.mailboxId ? "Saving..." : "Save"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Card>
+        <CardHead
+          title="Gmail seed accounts"
+          display
+          actions={<StatusPill label={`${warmupSeeds.length} connected`} tone={warmupSeeds.length ? "good" : "neutral"} />}
+        />
+        <form className="card-body stack" style={{ gap: "var(--s-4)" }} onSubmit={saveSeed}>
+          <div className="field-row">
+            <div className="field">
+              <label htmlFor="warmup-seed-email">Email address</label>
+              <input
+                id="warmup-seed-email"
+                className="input"
+                type="email"
+                value={seedForm.emailAddress}
+                onChange={(event) => setSeedForm((current) => ({ ...current, emailAddress: event.target.value }))}
               />
             </div>
-          </Card>
-        ) : (
-          mailboxes.map((mailbox) => <MailboxCard key={mailbox.mailboxId} mailbox={mailbox} />)
-        )}
-      </div>
-
-      <div className="grid-2 section">
-        <AddMailboxForm />
-
-        <Card>
-          <CardHead title="Warmup" display actions={<StatusPill label="Coming later" tone="neutral" />} />
-          <div className="card-body stack" style={{ gap: "var(--s-3)" }}>
-            <p className="muted" style={{ fontSize: 13 }}>
-              Warmup will gradually raise a new mailbox&apos;s sending volume before campaigns use it in full.
-            </p>
-            <p className="subtle" style={{ fontSize: 12.5 }}>
-              The warmup engine is not built. No warmup score is shown because none is being measured.
-            </p>
+            <div className="field">
+              <label htmlFor="warmup-seed-user">Composio user id</label>
+              <input
+                id="warmup-seed-user"
+                className="input"
+                value={seedForm.composioUserId}
+                onChange={(event) => setSeedForm((current) => ({ ...current, composioUserId: event.target.value }))}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="warmup-seed-account">Composio connected account id</label>
+              <input
+                id="warmup-seed-account"
+                className="input"
+                value={seedForm.composioConnectedAccountId}
+                onChange={(event) =>
+                  setSeedForm((current) => ({ ...current, composioConnectedAccountId: event.target.value }))
+                }
+              />
+            </div>
           </div>
-        </Card>
-      </div>
-    </>
+          <div>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={
+                savingSeed ||
+                !seedForm.emailAddress.trim() ||
+                !seedForm.composioUserId.trim() ||
+                !seedForm.composioConnectedAccountId.trim()
+              }
+            >
+              {savingSeed ? "Saving..." : "Add seed account"}
+            </button>
+          </div>
+        </form>
+      </Card>
+    </div>
   );
 }
 

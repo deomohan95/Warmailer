@@ -730,6 +730,27 @@
   font-variant-numeric: tabular-nums;
 }
 
+.warmup-table th,
+.warmup-table td {
+  white-space: nowrap;
+}
+
+.warmup-number {
+  width: 76px;
+}
+
+.check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+}
+
+.check-row input {
+  flex: none;
+}
+
 /* ---------- Settings ---------- */
 
 .settings-section {
