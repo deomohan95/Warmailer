@@ -83,7 +83,7 @@
 - `apps/web/app/(app)/mailboxes/page.tsx`
   - Load warmup data alongside existing mailboxes.
 - `apps/web/components/mailboxes/mailboxes-workspace.tsx`
-  - Replace disabled Warmup card with per-mailbox warmup controls and summary.
+  - Add a top tab switcher inside the Mailboxes workspace. The default tab keeps current mailbox capacity/connection UI; the Warmup tab contains all warmup summary, seed, and per-mailbox controls.
 - `apps/web/app/styles/pages.css`
   - Add compact dashboard styles for warmup metrics.
 - `apps/web/test/frontend-invariants.test.ts`
@@ -1237,6 +1237,8 @@ Expected: pass.
 it("shows warmup metrics, controls, and Gmail seed count on mailboxes", async () => {
   const component = await source("components/mailboxes/mailboxes-workspace.tsx");
 
+  expect(component).toContain('type MailboxTab = "mailboxes" | "warmup"');
+  expect(component).toContain('aria-label="Mailbox sections"');
   expect(component).toContain("Warmup reputation");
   expect(component).toContain("Saved from spam");
   expect(component).toContain("Landed in inbox");
@@ -1281,9 +1283,32 @@ UI sections:
   - current Gmail seed count
   - form fields for email, Composio user id, Composio connected account id
 
-Do not add a separate top-level `/warmup` route for MVP; keep warmup inside Mailboxes as the manual already describes.
+Do not add a separate top-level `/warmup` route for MVP. Keep warmup inside Mailboxes as a top tab within the Mailboxes workspace, not as a loose standalone card below the mailbox list.
 
-- [ ] **Step 4: Add mailbox controls**
+- [ ] **Step 4: Add Warmup top tab and mailbox controls**
+
+At the top of `MailboxesWorkspace`, add a two-tab control:
+
+```tsx
+type MailboxTab = "mailboxes" | "warmup";
+
+const [activeTab, setActiveTab] = useState<MailboxTab>("mailboxes");
+```
+
+Render tab buttons before the workspace content:
+
+```tsx
+<div className="tabs" aria-label="Mailbox sections">
+  <button type="button" className={activeTab === "mailboxes" ? "tab active" : "tab"} onClick={() => setActiveTab("mailboxes")}>
+    Mailboxes
+  </button>
+  <button type="button" className={activeTab === "warmup" ? "tab active" : "tab"} onClick={() => setActiveTab("warmup")}>
+    Warmup
+  </button>
+</div>
+```
+
+Only render existing mailbox capacity/add/edit UI when `activeTab === "mailboxes"`. Only render warmup summary, Gmail seed accounts, and per-mailbox warmup controls when `activeTab === "warmup"`.
 
 Each row has:
 
