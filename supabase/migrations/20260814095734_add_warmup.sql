@@ -39,9 +39,11 @@ create table if not exists public.warmup_seed_accounts (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (id, workspace_id),
-  unique (workspace_id, lower(email_address)),
   unique (workspace_id, composio_connected_account_id)
 );
+
+create unique index if not exists warmup_seed_accounts_workspace_email_idx
+  on public.warmup_seed_accounts (workspace_id, lower(email_address));
 
 create table if not exists public.warmup_messages (
   id uuid primary key default gen_random_uuid(),

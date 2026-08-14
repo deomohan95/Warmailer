@@ -42,6 +42,12 @@ test("warmup settings include defaults and reply rate cap", () => {
   assert.match(migration, /warmup_reply_rate_percent between 0 and 100/i);
 });
 
+test("warmup seed email uniqueness uses an expression index", () => {
+  assert.doesNotMatch(migration, /unique\s*\(\s*workspace_id\s*,\s*lower\(/i);
+  assert.match(migration, /create unique index if not exists warmup_seed_accounts_workspace_email_idx/i);
+  assert.match(migration, /on public\.warmup_seed_accounts \(workspace_id, lower\(email_address\)\)/i);
+});
+
 test("warmup reputation is derived from events and messages", () => {
   assert.match(migration, /create or replace view public\.warmup_mailbox_stats/i);
   assert.match(migration, /with \(security_invoker = true\)/i);
