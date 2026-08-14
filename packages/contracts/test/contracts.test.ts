@@ -14,6 +14,8 @@ import {
   MessageDirectionSchema,
   MessageEventTypeSchema,
   InboxThreadListItemSchema,
+  WarmupMailboxUpdateInputSchema,
+  WarmupSeedCreateInputSchema,
   WorkspaceRoleSchema,
 } from "../src/index";
 
@@ -103,6 +105,39 @@ describe("Warmailer shared contracts", () => {
         hourlyHardLimit: 12,
         usedToday: 40,
         reservedToday: 10,
+      }),
+    ).toThrow();
+  });
+
+  it("accepts warmup settings and seed registration without browser workspace ids", () => {
+    expect(
+      WarmupMailboxUpdateInputSchema.parse({
+        mailboxId: "mailbox_1",
+        warmupEnabled: true,
+        warmupDailyLimit: 25,
+        warmupDailyRampup: 5,
+        warmupRandomizeDailyCount: true,
+        warmupReplyRatePercent: 20,
+      }),
+    ).toMatchObject({ mailboxId: "mailbox_1", warmupReplyRatePercent: 20 });
+
+    expect(
+      WarmupSeedCreateInputSchema.parse({
+        emailAddress: "Seed@Gmail.com",
+        composioUserId: "seed-user",
+        composioConnectedAccountId: "ca_seed",
+      }),
+    ).toMatchObject({ emailAddress: "seed@gmail.com" });
+
+    expect(() =>
+      WarmupMailboxUpdateInputSchema.parse({
+        mailboxId: "mailbox_1",
+        workspaceId: "browser_ws",
+        warmupEnabled: true,
+        warmupDailyLimit: 25,
+        warmupDailyRampup: 5,
+        warmupRandomizeDailyCount: true,
+        warmupReplyRatePercent: 101,
       }),
     ).toThrow();
   });

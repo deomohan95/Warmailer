@@ -159,6 +159,25 @@ export const InboxThreadListItemSchema = z
   })
   .strict();
 
+export const WarmupMailboxUpdateInputSchema = z
+  .object({
+    mailboxId: z.string().min(1),
+    warmupEnabled: z.boolean(),
+    warmupDailyLimit: z.number().int().min(1).max(100),
+    warmupDailyRampup: z.number().int().min(1).max(100),
+    warmupRandomizeDailyCount: z.boolean(),
+    warmupReplyRatePercent: z.number().int().min(0).max(100),
+  })
+  .strict();
+
+export const WarmupSeedCreateInputSchema = z
+  .object({
+    emailAddress: z.string().trim().email().transform((value) => value.toLowerCase()),
+    composioUserId: z.string().trim().min(1),
+    composioConnectedAccountId: z.string().trim().min(1),
+  })
+  .strict();
+
 export type JobStatus = z.infer<typeof JobStatusSchema>;
 export type WorkspaceRole = z.infer<typeof WorkspaceRoleSchema>;
 export type EmailStatus = z.infer<typeof EmailStatusSchema>;
@@ -175,3 +194,5 @@ export type CampaignCreateInput = z.infer<typeof CampaignCreateInputSchema>;
 export type CampaignListItem = z.infer<typeof CampaignListItemSchema>;
 export type ThreadStatus = z.infer<typeof ThreadStatusSchema>;
 export type InboxThreadListItem = z.infer<typeof InboxThreadListItemSchema>;
+export type WarmupMailboxUpdateInput = z.infer<typeof WarmupMailboxUpdateInputSchema>;
+export type WarmupSeedCreateInput = z.infer<typeof WarmupSeedCreateInputSchema>;
