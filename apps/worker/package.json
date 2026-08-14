@@ -7,6 +7,7 @@
     "mail": "node src/mail-worker.mjs",
     "mail:sync": "node src/mail-worker.mjs --sync-only",
     "mail:send": "node src/mail-worker.mjs --send-only",
+    "warmup": "node src/warmup-worker.mjs",
     "test": "node --test"
   },
   "engines": {

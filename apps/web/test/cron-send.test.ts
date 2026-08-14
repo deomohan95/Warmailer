@@ -44,3 +44,21 @@ describe("cron send route", () => {
     });
   });
 });
+
+describe("cron warmup route", () => {
+  it("requires bearer cron secret for warmup", async () => {
+    vi.stubEnv("CRON_SECRET", "cron-secret");
+    const mod = await import("../app/api/cron/warmup/route");
+
+    const response = await mod.GET(new Request("https://warmailer-app.vercel.app/api/cron/warmup"));
+
+    expect(response.status).toBe(401);
+  });
+
+  it("loads warmup composio config without exposing it to the browser", async () => {
+    vi.stubEnv("COMPOSIO_API_KEY", "composio-secret");
+    const mod = await import("../app/api/cron/warmup/route");
+
+    expect(mod.loadWarmupConfig().composioApiKey).toBe("composio-secret");
+  });
+});
