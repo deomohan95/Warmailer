@@ -4,7 +4,11 @@ import { getActiveWorkspace, getCampaigns, getInboxMessages, getInboxThreads, ge
 
 export const metadata = { title: "Inbox · Warmailer" };
 
-export default async function InboxPage() {
+type InboxSearchParams = Promise<{ folder?: string | string[] }>;
+
+export default async function InboxPage({ searchParams }: { searchParams?: InboxSearchParams }) {
+  const params = searchParams ? await searchParams : {};
+  const folder = Array.isArray(params.folder) ? params.folder[0] : params.folder;
   const workspace = await getActiveWorkspace();
   const [threads, messages, mailboxes, campaigns] = await Promise.all([
     getInboxThreads(workspace.workspaceId),
@@ -17,7 +21,13 @@ export default async function InboxPage() {
     <main className="page page-fit">
       <PageHeader title="Inbox" />
 
-      <InboxWorkspace threads={threads} messages={messages} mailboxes={mailboxes} campaigns={campaigns} />
+      <InboxWorkspace
+        threads={threads}
+        messages={messages}
+        mailboxes={mailboxes}
+        campaigns={campaigns}
+        initialFolder={folder}
+      />
     </main>
   );
 }

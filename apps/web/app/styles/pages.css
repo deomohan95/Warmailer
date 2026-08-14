@@ -755,6 +755,470 @@
   font-size: 12.5px;
 }
 
+/* ---------- Chart ---------- */
+
+/**
+ * Series colours. Validated with the dataviz validator against Warmailer's own
+ * surfaces — light #FAF9F5, dark #211F1D — for lightness band, chroma floor, CVD
+ * separation, normal-vision floor and contrast. The dark steps are selected for
+ * the dark band, not the light hexes reused: #E08A6B failed the band at L 0.716.
+ * Do not hand-edit these without re-running the validator.
+ */
+.chart {
+  --series-sent: #d97757;
+  --series-opened: #4a3aa7;
+  --series-replied: #1baf7a;
+}
+
+[data-theme="dark"] .chart {
+  --series-sent: #d4744f;
+  --series-opened: #9085e9;
+  --series-replied: #199e70;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-4);
+  margin-bottom: var(--s-4);
+}
+
+.chart-key {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+}
+
+/* Identity rides a swatch beside the text; the text stays in ink tokens. */
+.chart-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.chart-swatch-sent {
+  background: var(--series-sent);
+}
+
+.chart-swatch-opened {
+  background: var(--series-opened);
+}
+
+.chart-swatch-replied {
+  background: var(--series-replied);
+}
+
+.chart-plot {
+  display: flex;
+  gap: var(--s-2);
+}
+
+.chart-axis-y {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 190px;
+  padding-bottom: 1px;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  flex: none;
+}
+
+.chart-grid {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 190px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Hairline, solid, one step off the surface — never dashed, never assertive. */
+.chart-gridline {
+  height: 1px;
+  background: var(--line);
+}
+
+.chart-gridline:last-child {
+  background: var(--border);
+}
+
+.chart-cols {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.chart-col {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  border: 0;
+  border-radius: 3px 3px 0 0;
+  background: transparent;
+  cursor: default;
+  transition: background var(--t-fast);
+}
+
+.chart-col[data-active="true"] {
+  background: color-mix(in oklab, var(--ink-3) 10%, transparent);
+}
+
+.chart-bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  /* The 2px surface gap is what separates neighbouring bars — never a stroke. */
+  gap: 2px;
+  width: 100%;
+  height: 100%;
+  padding: 0 2px;
+}
+
+/* Thin marks, 4px rounded data-end, square where they meet the baseline. */
+.chart-bar {
+  flex: 1;
+  max-width: 14px;
+  min-height: 0;
+  border-radius: 4px 4px 0 0;
+  transition: opacity var(--t-fast);
+}
+
+.chart-bar-sent {
+  background: var(--series-sent);
+}
+
+.chart-bar-opened {
+  background: var(--series-opened);
+}
+
+.chart-bar-replied {
+  background: var(--series-replied);
+}
+
+.chart-tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  z-index: 5;
+  display: grid;
+  gap: 3px;
+  min-width: 132px;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-ctrl);
+  background: var(--surface-raised);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+  transform: translateX(-50%);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.chart-tip strong {
+  font-size: 12.5px;
+}
+
+.chart-tip span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+}
+
+.chart-tip b {
+  margin-left: auto;
+  padding-left: var(--s-3);
+  color: var(--ink);
+}
+
+.chart-axis-x {
+  display: flex;
+  gap: 2px;
+  margin-top: 6px;
+  /* Clears the y-axis gutter so ticks sit under their own columns. */
+  padding-left: calc(var(--s-2) + 22px);
+  color: var(--ink-3);
+  font-size: 10.5px;
+}
+
+.chart-axis-x span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chart-empty {
+  margin-top: var(--s-4);
+  font-size: 12.5px;
+}
+
+.chart-table {
+  margin-top: var(--s-4);
+  border-top: 1px solid var(--line);
+  padding-top: var(--s-3);
+}
+
+.chart-table summary {
+  color: var(--ink-2);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.chart-table summary:hover {
+  color: var(--ink);
+}
+
+.chart-table .table-wrap {
+  margin-top: var(--s-3);
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+/* ---------- Reply funnel ---------- */
+
+.funnel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+.funnel-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.funnel-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+}
+
+.funnel-label {
+  color: var(--ink-2);
+  font-size: 12.5px;
+}
+
+.funnel-count {
+  margin-left: auto;
+  font-size: 17px;
+  font-weight: 600;
+  /* Proportional: these are standalone values, not a column to align. */
+  font-variant-numeric: proportional-nums;
+}
+
+.funnel-track {
+  height: 10px;
+  border-radius: 3px;
+  background: color-mix(in oklab, var(--ink-3) 14%, transparent);
+  overflow: hidden;
+}
+
+.funnel-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width var(--t-slow);
+}
+
+/* Same three validated hues as the daily chart — a stage keeps its identity. */
+.funnel-fill-sent {
+  background: var(--series-sent);
+}
+
+.funnel-fill-opened {
+  background: var(--series-opened);
+}
+
+.funnel-fill-replied {
+  background: var(--series-replied);
+}
+
+.funnel-foot {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.funnel-foot strong {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.funnel-link {
+  margin-top: var(--s-1);
+  font-size: 12.5px;
+}
+
+/* ---------- Inbox status ---------- */
+
+.inbox-status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+.waiting {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+.waiting-value {
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: proportional-nums;
+}
+
+.waiting-label {
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+
+.status-bar {
+  display: flex;
+  /* The 2px surface gap is the separator — no strokes around segments. */
+  gap: 2px;
+  height: 10px;
+}
+
+.status-seg {
+  border-radius: 3px;
+  min-width: 3px;
+}
+
+/**
+ * Attention, not severity. Unread takes the accent because it is the work still
+ * queued; everything handled recedes. Reserved status colours stay out of this —
+ * an unanswered reply is not an error.
+ */
+.status-seg-unread {
+  background: var(--accent);
+}
+
+.status-seg-read {
+  background: color-mix(in oklab, var(--accent) 45%, var(--ink-3));
+}
+
+.status-seg-replied {
+  background: color-mix(in oklab, var(--ink-3) 55%, transparent);
+}
+
+.status-seg-archived {
+  background: color-mix(in oklab, var(--ink-3) 28%, transparent);
+}
+
+.status-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-4);
+}
+
+.status-key {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  transition: color var(--t-fast);
+}
+
+.status-key:hover {
+  color: var(--ink);
+}
+
+.status-key[data-empty="true"] {
+  color: var(--ink-3);
+}
+
+.status-key .num {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.status-key[data-empty="true"] .num {
+  color: var(--ink-3);
+  font-weight: 500;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+}
+
+/* ---------- Rate figures ---------- */
+
+.rate-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3) var(--s-5);
+}
+
+.rate {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rate-value {
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.15;
+  /* Proportional figures: tabular makes a standalone number look loose. */
+  font-variant-numeric: proportional-nums;
+}
+
+.rate-label {
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+
+.rate-of {
+  color: var(--ink-3);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A hairline share bar under a campaign row — magnitude at a glance. */
+.share-track {
+  position: relative;
+  height: 5px;
+  border-radius: 3px;
+  background: color-mix(in oklab, var(--ink-3) 16%, transparent);
+  overflow: hidden;
+}
+
+.share-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 3px;
+}
+
+.share-fill-opened {
+  background: var(--series-opened);
+}
+
+.share-fill-replied {
+  background: var(--series-replied);
+}
+
 /* ---------- Responsive ---------- */
 
 @media (max-width: 1180px) {
@@ -785,6 +1249,15 @@
   .grid-3,
   .grid-2 {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /**
+   * 14 dates cannot fit legibly across a narrow viewport — truncating every one
+   * to "1…" is worse than showing fewer. Drop alternate ticks; the bars, the
+   * tooltip and the table view still carry every day.
+   */
+  .chart-axis-x span:nth-child(even) {
+    visibility: hidden;
   }
 
   /* Stacked: the list takes a fixed band and the pane takes the rest. */

@@ -328,11 +328,79 @@ describe("inbox empty states", () => {
     expect(data).toContain("getInboxMessages(workspace.workspaceId)");
     expect(page).toContain("DashboardWorkspace");
     expect(component).toContain('aria-label="Campaign filter"');
-    for (const label of ["Emails sent", "Opened", "Replied", "Bounced", "Sending activity"]) {
+    for (const label of ["Emails sent", "Opened", "Replied", "Bounced", "Reply funnel", "Needs your reply"]) {
       expect(component).toContain(label);
     }
     expect(component).not.toContain("No active campaigns");
     expect(component).not.toContain("No replies synced");
+  });
+
+  it("drops the reverse-chronological list cards that only restated other pages", async () => {
+    const component = await source("components/dashboard/dashboard-workspace.tsx");
+
+    expect(component).not.toContain("Recent events");
+    expect(component).not.toContain("Latest replies");
+    // The row-rendering machinery they needed should be gone with them.
+    expect(component).not.toContain("EVENT_LABELS");
+    expect(component).not.toContain("recentReplies");
+  });
+
+  it("backtracks every inbox figure to the folder it was counted from", async () => {
+    const status = await source("components/dashboard/inbox-status.tsx");
+    const page = await source("app/(app)/inbox/page.tsx");
+    const workspace = await source("components/inbox/inbox-workspace.tsx");
+
+    // Dashboard → a real Inbox folder, not just /inbox.
+    expect(status).toContain("/inbox?folder=");
+    expect(status).toContain("FOLDER_FOR_STATUS");
+
+    // The Inbox has to honour that param rather than always opening on "inbox".
+    expect(page).toContain("searchParams");
+    expect(page).toContain("initialFolder={folder}");
+    expect(workspace).toContain("folderFromParam(initialFolder)");
+    // An unknown folder name must fall back instead of showing an empty tab.
+    expect(workspace).toMatch(/FOLDERS\.some\(\(item\) => item\.key === value\)/);
+  });
+
+  it("shows every headline count as a rate of the same denominator", async () => {
+    const component = await source("components/dashboard/dashboard-workspace.tsx");
+
+    // One denominator — sent — so open, reply and bounce rates are comparable.
+    for (const label of ["estimated open rate of", "reply rate of", "bounce rate of"]) {
+      expect(component).toContain(label);
+    }
+    expect(component).toContain("rate(opened, sent)");
+    expect(component).toContain("rate(replied, sent)");
+    expect(component).toContain("rate(bounced, sent)");
+  });
+
+  it("charts sent, opened and replied per day with validated series colours", async () => {
+    const chart = await source("components/dashboard/activity-chart.tsx");
+    const styles = await source("app/styles/pages.css");
+
+    // Grouped, not stacked: opens and replies are subsets of sends, so a stack
+    // would imply a total that never happened.
+    for (const key of ['key: "sent"', 'key: "opened"', 'key: "replied"']) {
+      expect(chart).toContain(key);
+    }
+    expect(chart).toContain("chart-bar chart-bar-${series.key}");
+    for (const cls of [".chart-bar-sent", ".chart-bar-opened", ".chart-bar-replied"]) {
+      expect(styles).toContain(cls);
+    }
+
+    // The exact hexes the dataviz validator passed against Warmailer's surfaces.
+    expect(styles).toContain("--series-sent: #d97757");
+    expect(styles).toContain("--series-opened: #4a3aa7");
+    expect(styles).toContain("--series-replied: #1baf7a");
+    // Dark steps are selected for the dark band, not the light hexes reused.
+    expect(styles).toContain("--series-sent: #d4744f");
+
+    // Relief for the sub-3:1 light steps, and identity that is never colour alone.
+    expect(chart).toContain("chart-legend");
+    expect(chart).toContain("View as table");
+    // 2px surface gap separates neighbouring bars instead of a stroke.
+    expect(styles).toMatch(/\.chart-bars\s*\{[^}]*gap:\s*2px/);
+    expect(styles).toMatch(/\.chart-bar\s*\{[^}]*border-radius:\s*4px 4px 0 0/);
   });
 
   it("does not show stale open-tracking setup copy after open events are wired", async () => {

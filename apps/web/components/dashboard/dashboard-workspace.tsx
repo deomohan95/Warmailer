@@ -12,9 +12,13 @@ import {
   IconLeads,
   IconMailbox,
 } from "@/components/icons";
+import { ActivityChart } from "@/components/dashboard/activity-chart";
+import { InboxStatus } from "@/components/dashboard/inbox-status";
+import { ReplyFunnel } from "@/components/dashboard/reply-funnel";
 import { Card, CardHead, EmptyState, Meter, Notice, StatusPill } from "@/components/ui/primitives";
 import { availableToday, campaignDailyCapacity, isSendable } from "@/lib/capacity";
 import { CAMPAIGN_STATUS, formatDateTime } from "@/lib/labels";
+import { dailySeries, formatRate, rate } from "@/lib/metrics";
 import type { Campaign, CampaignActivity, InboxMessage, InboxThread, Mailbox } from "@/lib/types";
 
 type Overview = {
@@ -25,18 +29,6 @@ type Overview = {
   send_capacity_today: number;
   active_campaign_count: number;
   unread_thread_count: number;
-};
-
-const EVENT_LABELS: Record<CampaignActivity["eventType"], string> = {
-  scheduled: "Scheduled",
-  sent: "Sent",
-  delivered: "Delivered",
-  opened: "Opened",
-  replied: "Replied",
-  bounced: "Bounced",
-  paused: "Paused",
-  resumed: "Resumed",
-  stopped: "Stopped",
 };
 
 function eventCount(activity: CampaignActivity[], type: CampaignActivity["eventType"]) {
@@ -74,8 +66,6 @@ export function DashboardWorkspace({
 }) {
   const [campaignId, setCampaignId] = useState("all");
   const selectedCampaign = campaigns.find((campaign) => campaign.campaignId === campaignId);
-  const campaignName = (id?: string) => campaigns.find((campaign) => campaign.campaignId === id)?.name ?? "Unknown campaign";
-  const mailboxName = (id?: string) => mailboxes.find((mailbox) => mailbox.mailboxId === id)?.emailAddress ?? "Unknown mailbox";
   const inScope = (item: { campaignId?: string }) => campaignId === "all" || item.campaignId === campaignId;
 
   const filteredCampaigns = campaignId === "all" ? campaigns : selectedCampaign ? [selectedCampaign] : [];
@@ -91,8 +81,11 @@ export function DashboardWorkspace({
   const capacity = overview?.send_capacity_today ?? campaignDailyCapacity(mailboxes);
   const sendable = mailboxes.filter(isSendable);
   const warnings = launchWarnings(importedCount, emailFoundCount, mailboxes);
-  const recentActivity = filteredActivity.slice(0, 10);
-  const recentReplies = filteredMessages.filter((message) => message.direction === "inbound").slice(-5).reverse();
+  // Rates are all "of sent" — one denominator, so the figures can be compared.
+  const openRate = rate(opened, sent);
+  const replyRate = rate(replied, sent);
+  const bounceRate = rate(bounced, sent);
+  const series = dailySeries(filteredActivity);
 
   return (
     <div className="workspace-full">
@@ -139,7 +132,9 @@ export function DashboardWorkspace({
             <span className="muted">{campaignId === "all" ? "tracked opens" : selectedCampaign?.name}</span>
           </div>
           <div className="state-card-foot">
-            <span className="subtle">From signed tracking pixel events.</span>
+            <span className="rate-value">{formatRate(openRate)}</span>{" "}
+            {/* Pixel tracking undercounts blocked images and overcounts prefetch — an estimate, and labelled as one. */}
+            <span className="rate-label">estimated open rate of {sent.toLocaleString()} sent</span>
           </div>
         </Card>
 
@@ -153,9 +148,8 @@ export function DashboardWorkspace({
             <span className="muted">{filteredThreads.length.toLocaleString()} reply thread{filteredThreads.length === 1 ? "" : "s"}</span>
           </div>
           <div className="state-card-foot">
-            <Link href="/inbox" className="action-link">
-              Master inbox <IconArrowRight />
-            </Link>
+            <span className="rate-value">{formatRate(replyRate)}</span>{" "}
+            <span className="rate-label">reply rate of {sent.toLocaleString()} sent</span>
           </div>
         </Card>
 
@@ -169,7 +163,8 @@ export function DashboardWorkspace({
             <span className="muted">from mail worker events</span>
           </div>
           <div className="state-card-foot">
-            <span className="subtle">No fake bounce estimates.</span>
+            <span className="rate-value">{formatRate(bounceRate)}</span>{" "}
+            <span className="rate-label">bounce rate of {sent.toLocaleString()} sent</span>
           </div>
         </Card>
       </div>
@@ -242,41 +237,31 @@ export function DashboardWorkspace({
         </Card>
       </div>
 
+      <div className="section">
+        <Card>
+          <CardHead
+            title="Sent, opened and replied — last 14 days"
+            display
+            actions={
+              <span className="subtle" style={{ fontSize: 12 }}>
+                {campaignId === "all" ? "All campaigns" : selectedCampaign?.name}
+              </span>
+            }
+          />
+          <div className="card-body">
+            <ActivityChart points={series} />
+          </div>
+        </Card>
+      </div>
+
       <div className="grid-2 section">
         <Card>
-          <CardHead title="Sending activity" display />
-          <div className="card-body card-body-flush">
-            {recentActivity.length === 0 ? (
-              <EmptyState
-                small
-                icon={<IconCampaigns />}
-                title="No activity for this filter"
-                description="Once the worker sends, replies, bounces or pauses, the events appear here."
-              />
-            ) : (
-              <div className="table-wrap">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Event</th>
-                      <th scope="col">Campaign</th>
-                      <th scope="col">Mailbox</th>
-                      <th scope="col">Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentActivity.map((event) => (
-                      <tr key={event.entityId}>
-                        <td className="cell-strong">{EVENT_LABELS[event.eventType]}</td>
-                        <td>{campaignName(event.campaignId)}</td>
-                        <td className="muted">{mailboxName(event.mailboxId)}</td>
-                        <td className="num muted">{formatDateTime(event.occurredAt)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+          <CardHead title="Reply funnel" display />
+          <div className="card-body">
+            <ReplyFunnel
+              counts={{ sent, opened, replied, bounced }}
+              inboxHref={campaignId === "all" ? "/inbox" : `/inbox?campaign=${campaignId}`}
+            />
           </div>
         </Card>
 
@@ -286,37 +271,64 @@ export function DashboardWorkspace({
             {filteredCampaigns.length === 0 ? (
               <EmptyState small title="No campaigns match this filter" />
             ) : (
-              <div className="stack" style={{ gap: "var(--s-4)" }}>
+              <div className="stack" style={{ gap: "var(--s-5)" }}>
                 {filteredCampaigns.slice(0, 6).map((campaign) => {
                   const campaignActivity = activity.filter((event) => event.campaignId === campaign.campaignId);
+                  const campaignSent = eventCount(campaignActivity, "sent");
+                  const campaignOpened = eventCount(campaignActivity, "opened");
+                  const campaignReplied = eventCount(campaignActivity, "replied");
+                  const campaignOpenRate = rate(campaignOpened, campaignSent);
+                  const campaignReplyRate = rate(campaignReplied, campaignSent);
+
                   return (
-                    <div key={campaign.campaignId} className="stack" style={{ gap: 6 }}>
+                    <div key={campaign.campaignId} className="stack" style={{ gap: "var(--s-2)" }}>
                       <div className="row" style={{ gap: "var(--s-2)" }}>
                         <Link href={`/campaigns/${campaign.campaignId}`} className="cell-strong action-link">
                           {campaign.name}
                         </Link>
                         <StatusPill {...CAMPAIGN_STATUS[campaign.status]} />
                         <span className="spacer" />
-                        <span className="subtle num">{campaign.lastActivityAt ? formatDateTime(campaign.lastActivityAt) : "No activity"}</span>
-                      </div>
-                      <div className="stat-strip dashboard-mini-strip">
-                        <span className="stat-item">
-                          <strong className="stat-value">{eventCount(campaignActivity, "sent")}</strong>
-                          <span className="stat-label">sent</span>
-                        </span>
-                        <span className="stat-item">
-                          <strong className="stat-value">{eventCount(campaignActivity, "opened")}</strong>
-                          <span className="stat-label">opened</span>
-                        </span>
-                        <span className="stat-item">
-                          <strong className="stat-value">{eventCount(campaignActivity, "replied")}</strong>
-                          <span className="stat-label">replied</span>
-                        </span>
-                        <span className="stat-item">
-                          <strong className="stat-value">{eventCount(campaignActivity, "bounced")}</strong>
-                          <span className="stat-label">bounced</span>
+                        <span className="subtle num">
+                          {campaign.lastActivityAt ? formatDateTime(campaign.lastActivityAt) : "No activity"}
                         </span>
                       </div>
+
+                      <div className="rate-row">
+                        <div className="rate">
+                          <span className="rate-value">{campaignSent.toLocaleString()}</span>
+                          <span className="rate-label">sent</span>
+                        </div>
+                        <div className="rate">
+                          <span className="rate-value">{formatRate(campaignOpenRate)}</span>
+                          <span className="rate-label">
+                            opened · {campaignOpened.toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="rate">
+                          <span className="rate-value">{formatRate(campaignReplyRate)}</span>
+                          <span className="rate-label">
+                            replied · {campaignReplied.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Share bars only once something was sent — an empty track would read as 0%. */}
+                      {campaignSent > 0 ? (
+                        <div className="stack chart" style={{ gap: 3 }}>
+                          <div className="share-track">
+                            <div
+                              className="share-fill share-fill-opened"
+                              style={{ right: `${100 - (campaignOpenRate ?? 0) * 100}%` }}
+                            />
+                          </div>
+                          <div className="share-track">
+                            <div
+                              className="share-fill share-fill-replied"
+                              style={{ right: `${100 - (campaignReplyRate ?? 0) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}
@@ -348,23 +360,9 @@ export function DashboardWorkspace({
         </Card>
 
         <Card>
-          <CardHead title="Latest replies" display />
+          <CardHead title="Needs your reply" display />
           <div className="card-body">
-            {recentReplies.length === 0 ? (
-              <EmptyState small icon={<IconInbox />} title="No replies for this filter" />
-            ) : (
-              <div className="stack" style={{ gap: "var(--s-3)" }}>
-                {recentReplies.map((message) => (
-                  <Link key={message.messageId} href="/inbox" className="thread-item" style={{ borderRadius: "var(--r-ctrl)" }}>
-                    <div className="thread-item-top">
-                      <span className="thread-from">{message.bodyPreview || message.subject}</span>
-                      <span className="thread-time">{formatDateTime(message.receivedAt ?? message.createdAt)}</span>
-                    </div>
-                    <div className="thread-subject">{campaignName(message.campaignId)}</div>
-                  </Link>
-                ))}
-              </div>
-            )}
+            <InboxStatus threads={filteredThreads} />
           </div>
         </Card>
       </div>

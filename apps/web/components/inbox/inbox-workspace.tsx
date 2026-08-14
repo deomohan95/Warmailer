@@ -35,19 +35,27 @@ const FOLDERS: { key: Folder; label: string }[] = [
   { key: "archived", label: "Archived" },
 ];
 
+/** Only a known folder name may open from a URL; anything else falls back. */
+function folderFromParam(value: string | undefined): Folder {
+  return FOLDERS.some((item) => item.key === value) ? (value as Folder) : "inbox";
+}
+
 export function InboxWorkspace({
   threads,
   messages,
   mailboxes,
   campaigns,
+  initialFolder,
 }: {
   threads: InboxThread[];
   messages: InboxMessage[];
   mailboxes: Mailbox[];
   campaigns: Campaign[];
+  initialFolder?: string;
 }) {
   const router = useRouter();
-  const [folder, setFolder] = useState<Folder>("inbox");
+  // Lets the dashboard link straight to the folder a figure was counted from.
+  const [folder, setFolder] = useState<Folder>(() => folderFromParam(initialFolder));
   const [campaignId, setCampaignId] = useState("all");
   const [mailboxId, setMailboxId] = useState("all");
   const [sortOrder, setSortOrder] = useState<SortOrder>("latest");
