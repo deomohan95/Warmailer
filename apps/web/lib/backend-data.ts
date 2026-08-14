@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { cookies } from "next/headers";
 import { cache } from "react";
 
-import { ACCESS_COOKIE, authApiKey, type AuthUser } from "./auth";
+import { ACCESS_COOKIE, type AuthUser } from "./auth";
 import { ACTIVE_WORKSPACE, type ActiveWorkspace } from "./workspace";
 import type {
   Campaign,
@@ -254,11 +254,11 @@ export async function getAuthUser(accessToken?: string): Promise<AuthUser | null
   const token = accessToken ?? (await cookieAccessToken());
   if (!token) return null;
 
-  const { url } = requireSupabaseConfig();
+  const { url, key } = requireSupabaseConfig();
   const response = await fetch(`${url}/auth/v1/user`, {
     cache: "no-store",
     headers: {
-      apikey: authApiKey(),
+      apikey: key,
       authorization: `Bearer ${token}`,
     },
   });

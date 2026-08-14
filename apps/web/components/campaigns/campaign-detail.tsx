@@ -44,6 +44,7 @@ export function CampaignDetail({
   const remaining = campaign.selectedLeadCount;
   const days = estimatedDaysToComplete(remaining, Math.min(capacity, campaign.schedule.maxSendsPerDay || capacity));
   const sendEvents = activity.filter((event) => event.eventType === "sent");
+  const openEvents = activity.filter((event) => event.eventType === "opened");
   const replyEvents = activity.filter((event) => event.eventType === "replied");
   const running = campaign.status === "sending" || campaign.status === "scheduled";
 
@@ -125,7 +126,11 @@ export function CampaignDetail({
                     ? "No replies synced yet."
                     : `${replyEvents.length} ${replyEvents.length === 1 ? "reply" : "replies"} synced.`}
                 </Notice>
-                <Notice icon={<IconAlert />}>Open tracking not configured yet.</Notice>
+                <Notice icon={<IconAlert />}>
+                  {openEvents.length === 0
+                    ? "No opens recorded yet."
+                    : `${openEvents.length} open event${openEvents.length === 1 ? "" : "s"} recorded.`}
+                </Notice>
                 <p className="subtle" style={{ fontSize: 12.5 }}>
                   Delivery, open, reply and bounce figures appear here once the mail worker records events. Nothing on
                   this page is estimated.

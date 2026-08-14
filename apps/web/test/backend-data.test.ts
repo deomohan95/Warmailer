@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   getActiveWorkspace,
+  getAuthUser,
   getCampaignDetail,
   getInboxMessages,
   getLeads,
@@ -41,6 +42,20 @@ describe("backend data mapping", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
 
     await expect(getActiveWorkspace()).rejects.toThrow("Unauthenticated");
+  });
+
+  it("validates session cookies with the same Supabase key loader used by login", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://project.supabase.co");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ id: "user_1", email: "owner@example.com" })));
+
+    await expect(getAuthUser("access-token")).resolves.toEqual({ id: "user_1", email: "owner@example.com" });
+    expect(fetch).toHaveBeenCalledWith(
+      "https://project.supabase.co/auth/v1/user",
+      expect.objectContaining({
+        headers: expect.objectContaining({ apikey: "test-key" }),
+      }),
+    );
   });
 
   it("returns empty read data when Supabase is temporarily unreachable", async () => {

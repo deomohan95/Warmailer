@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import { revalidatePath } from "next/cache";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
-import { envValue, getActiveWorkspace } from "@/lib/backend-data";
+import { processQueuedEnrichment } from "../../../../worker/src/enrichment-worker.mjs";
+import { envValue, getActiveWorkspace } from "../../../lib/backend-data";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 type LeadRow = {
   id: string;
@@ -13,6 +15,9 @@ type LeadRow = {
   email_status: string;
   linkedin_url_normalized: string | null;
 };
+
+type EnrichmentRunner = () => Promise<unknown>;
+type EnrichmentScheduler = (task: () => Promise<unknown>) => void;
 
 export async function POST(request: Request) {
   try {
@@ -63,12 +68,23 @@ export async function POST(request: Request) {
     revalidatePath("/");
     revalidatePath("/leads");
     revalidatePath("/campaigns/new");
+    triggerImmediateEnrichment();
 
     return NextResponse.json({ batchId, queued: eligible.length, skipped: leadIds.length - eligible.length });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Enrichment batch failed";
     return NextResponse.json({ error: message }, { status: message.includes("Missing") ? 500 : 400 });
   }
+}
+
+export function triggerImmediateEnrichment(run: EnrichmentRunner = processQueuedEnrichment, schedule: EnrichmentScheduler = after) {
+  schedule(async () => {
+    try {
+      await run();
+    } catch (error) {
+      console.error("Immediate enrichment failed", error);
+    }
+  });
 }
 
 function validateLeadIds(value: unknown): string[] {

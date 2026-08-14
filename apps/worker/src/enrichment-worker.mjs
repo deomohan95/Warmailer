@@ -199,9 +199,9 @@ async function finalizeBatch(db, batchId) {
 function readLocalEnv() {
   const start = dirname(fileURLToPath(import.meta.url));
   for (const file of [resolve(start, "../../../.env.local"), join(process.cwd(), ".env.local")]) {
-    if (!existsSync(file)) continue;
+    if (!existsSync(/*turbopackIgnore: true*/ file)) continue;
     return Object.fromEntries(
-      readFileSync(file, "utf8")
+      readFileSync(/*turbopackIgnore: true*/ file, "utf8")
         .split(/\r?\n/)
         .map((line) => line.trim())
         .filter((line) => line && !line.startsWith("#") && line.includes("="))

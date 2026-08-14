@@ -136,10 +136,10 @@ export function DashboardWorkspace({
           </div>
           <div className="state-card-body">
             <span className="metric-value">{opened.toLocaleString()}</span>
-            <span className="muted">tracking not configured yet</span>
+            <span className="muted">{campaignId === "all" ? "tracked opens" : selectedCampaign?.name}</span>
           </div>
           <div className="state-card-foot">
-            <span className="subtle">Will count when tracking pixel is added.</span>
+            <span className="subtle">From signed tracking pixel events.</span>
           </div>
         </Card>
 

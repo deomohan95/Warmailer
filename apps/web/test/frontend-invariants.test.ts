@@ -335,6 +335,17 @@ describe("inbox empty states", () => {
     expect(component).not.toContain("No replies synced");
   });
 
+  it("does not show stale open-tracking setup copy after open events are wired", async () => {
+    const component = await source("components/dashboard/dashboard-workspace.tsx");
+    const detail = await source("components/campaigns/campaign-detail.tsx");
+
+    for (const text of [component, detail]) {
+      expect(text).not.toContain("tracking not configured yet");
+      expect(text).not.toContain("Open tracking not configured yet");
+      expect(text).not.toContain("Will count when tracking pixel is added.");
+    }
+  });
+
   it("keeps Inbox and Leads as full-page workspaces without header explainer copy", async () => {
     const inboxPage = await source("app/(app)/inbox/page.tsx");
     const leadsPage = await source("app/(app)/leads/page.tsx");

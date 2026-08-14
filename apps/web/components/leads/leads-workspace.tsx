@@ -346,7 +346,7 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
               </button>
             ) : null}
             {eligible.length > 0 ? (
-              <button type="button" className="btn btn-secondary" onClick={findEmails} disabled={enriching}>
+              <button type="button" className="btn btn-primary" onClick={findEmails} disabled={enriching}>
                 {enriching ? "Queuing..." : `Find emails for ${eligible.length.toLocaleString()}`}
               </button>
             ) : null}
