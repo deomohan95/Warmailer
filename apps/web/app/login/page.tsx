@@ -23,7 +23,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <form className="stack" action="/api/auth/login" method="post" style={{ gap: "var(--s-4)" }}>
           <label className="field">
             <span>Username or email</span>
-            <input className="input" name="identifier" autoComplete="username" defaultValue="infomymaidspro" required />
+            <input className="input" name="identifier" autoComplete="username" required />
           </label>
           <label className="field">
             <span>Password</span>

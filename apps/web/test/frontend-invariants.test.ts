@@ -102,6 +102,12 @@ describe("backend wiring", () => {
     expect(layout).toContain('redirect("/login")');
   });
 
+  it("does not prefill a client-specific username on login", async () => {
+    const loginPage = await source("app/login/page.tsx");
+
+    expect(loginPage).not.toContain('defaultValue="infomymaidspro"');
+  });
+
   it("does not let route pages read demo data instead of the backend", async () => {
     const routePages = [
       "app/(app)/page.tsx",
