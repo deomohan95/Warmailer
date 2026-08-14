@@ -7,7 +7,7 @@ import { IconAlert, IconCheck, IconClock, IconLock, IconMailbox } from "@/compon
 import { Card, CardHead, EmptyState, Meter, Notice, StatusPill } from "@/components/ui/primitives";
 import { availableToday, campaignDailyCapacity, isSendable } from "@/lib/capacity";
 import { MAILBOX_STATUS } from "@/lib/labels";
-import type { Mailbox, WarmupMailboxStats, WarmupSeedAccount } from "@/lib/types";
+import type { Mailbox, WarmupMailboxStats } from "@/lib/types";
 
 const TIMEZONES = ["Europe/London", "Europe/Berlin", "America/New_York", "Asia/Kolkata", "UTC"];
 
@@ -24,11 +24,9 @@ type WarmupFormState = {
 export function MailboxesWorkspace({
   mailboxes,
   warmupStats,
-  warmupSeeds,
 }: {
   mailboxes: Mailbox[];
   warmupStats: WarmupMailboxStats[];
-  warmupSeeds: WarmupSeedAccount[];
 }) {
   const [activeTab, setActiveTab] = useState<MailboxTab>("mailboxes");
   const capacity = campaignDailyCapacity(mailboxes);
@@ -87,7 +85,7 @@ export function MailboxesWorkspace({
           </div>
         </>
       ) : (
-        <WarmupPanel mailboxes={mailboxes} warmupStats={warmupStats} warmupSeeds={warmupSeeds} />
+        <WarmupPanel mailboxes={mailboxes} warmupStats={warmupStats} />
       )}
     </>
   );
@@ -107,8 +105,7 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-function warmupIssue(mailbox: Mailbox, seeds: WarmupSeedAccount[]) {
-  if (seeds.length === 0) return "No Gmail seed account";
+function warmupIssue(mailbox: Mailbox) {
   if (mailbox.status !== "connected" && mailbox.status !== "warming") return "Mailbox not connected";
   if (!mailbox.appPasswordConfigured) return "Missing app password";
   return "Ready";
@@ -117,11 +114,9 @@ function warmupIssue(mailbox: Mailbox, seeds: WarmupSeedAccount[]) {
 function WarmupPanel({
   mailboxes,
   warmupStats,
-  warmupSeeds,
 }: {
   mailboxes: Mailbox[];
   warmupStats: WarmupMailboxStats[];
-  warmupSeeds: WarmupSeedAccount[];
 }) {
   const router = useRouter();
   const statsByMailbox = new Map(warmupStats.map((stat) => [stat.mailboxId, stat]));
@@ -137,13 +132,7 @@ function WarmupPanel({
   const [forms, setForms] = useState<Record<string, WarmupFormState>>(() =>
     Object.fromEntries(mailboxes.map((mailbox) => [mailbox.mailboxId, defaultWarmupState(statsByMailbox.get(mailbox.mailboxId))])),
   );
-  const [seedForm, setSeedForm] = useState({
-    emailAddress: "",
-    composioUserId: "",
-    composioConnectedAccountId: "",
-  });
   const [savingMailboxId, setSavingMailboxId] = useState<string | null>(null);
-  const [savingSeed, setSavingSeed] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -175,31 +164,6 @@ function WarmupPanel({
     }
 
     setMessage("Warmup settings saved.");
-    router.refresh();
-  }
-
-  async function saveSeed(event: React.FormEvent) {
-    event.preventDefault();
-    setSavingSeed(true);
-    setMessage(null);
-    setError(null);
-
-    const response = await fetch("/api/warmup/seeds", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(seedForm),
-    });
-
-    setSavingSeed(false);
-
-    if (!response.ok) {
-      const result = (await response.json().catch(() => null)) as { error?: string } | null;
-      setError(result?.error ?? "Seed account save failed");
-      return;
-    }
-
-    setSeedForm({ emailAddress: "", composioUserId: "", composioConnectedAccountId: "" });
-    setMessage("Gmail seed account saved.");
     router.refresh();
   }
 
@@ -333,7 +297,7 @@ function WarmupPanel({
                           />
                         </td>
                         <td className="num">{stat?.reputation ?? 100}%</td>
-                        <td>{warmupIssue(mailbox, warmupSeeds)}</td>
+                        <td>{warmupIssue(mailbox)}</td>
                         <td>
                           <div className="row" style={{ gap: "var(--s-2)", flexWrap: "wrap" }}>
                             <label className="check-row">
@@ -366,61 +330,6 @@ function WarmupPanel({
         </div>
       </Card>
 
-      <Card>
-        <CardHead
-          title="Gmail seed accounts"
-          display
-          actions={<StatusPill label={`${warmupSeeds.length} connected`} tone={warmupSeeds.length ? "good" : "neutral"} />}
-        />
-        <form className="card-body stack" style={{ gap: "var(--s-4)" }} onSubmit={saveSeed}>
-          <div className="field-row">
-            <div className="field">
-              <label htmlFor="warmup-seed-email">Email address</label>
-              <input
-                id="warmup-seed-email"
-                className="input"
-                type="email"
-                value={seedForm.emailAddress}
-                onChange={(event) => setSeedForm((current) => ({ ...current, emailAddress: event.target.value }))}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="warmup-seed-user">Composio user id</label>
-              <input
-                id="warmup-seed-user"
-                className="input"
-                value={seedForm.composioUserId}
-                onChange={(event) => setSeedForm((current) => ({ ...current, composioUserId: event.target.value }))}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="warmup-seed-account">Composio connected account id</label>
-              <input
-                id="warmup-seed-account"
-                className="input"
-                value={seedForm.composioConnectedAccountId}
-                onChange={(event) =>
-                  setSeedForm((current) => ({ ...current, composioConnectedAccountId: event.target.value }))
-                }
-              />
-            </div>
-          </div>
-          <div>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={
-                savingSeed ||
-                !seedForm.emailAddress.trim() ||
-                !seedForm.composioUserId.trim() ||
-                !seedForm.composioConnectedAccountId.trim()
-              }
-            >
-              {savingSeed ? "Saving..." : "Add seed account"}
-            </button>
-          </div>
-        </form>
-      </Card>
     </div>
   );
 }

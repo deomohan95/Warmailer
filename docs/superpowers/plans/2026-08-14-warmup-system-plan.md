@@ -15,6 +15,7 @@
 - Every warmup row must carry `workspace_id` and tenant-safe foreign keys.
 - Browser routes derive `workspace_id` from authenticated membership; never trust browser-supplied `workspace_id`.
 - A Gmail seed account may be added one at a time; the schema must work for one seed today and ten seeds without another migration.
+- Gmail seed accounts are app-owned infrastructure. Management is visible only to `infomymaidspro@gmail.com` under Settings admin, and regular workspace users must not see seed rows through the UI, app API, or browser Supabase access.
 - Warmup reputation is derived from recorded events, not manually edited counters.
 - First build supports Zoho sender mailboxes to Gmail seed accounts. Gmail as a customer sender mailbox is a separate feature.
 - This warms the sender mailbox/domain path you control. Dedicated-IP pool management is out of scope unless the mail provider exposes a dedicated IP assignment API.
@@ -64,7 +65,13 @@
 - `apps/web/app/api/warmup/mailboxes/route.ts`
   - Toggle and configure warmup on existing sender mailboxes.
 - `apps/web/app/api/warmup/seeds/route.ts`
-  - Register/list Gmail seed accounts already connected in Composio.
+  - Admin-only register/list Gmail seed accounts already connected in Composio.
+- `apps/web/app/(app)/settings/admin/page.tsx`
+  - Owner-only admin page for warmup seed infrastructure.
+- `apps/web/components/settings/warmup-admin.tsx`
+  - Owner-only Gmail seed account form and table.
+- `apps/web/lib/admin.ts`
+  - Exact email guard for app-owner-only admin routes.
 - `apps/web/lib/warmup-data.ts`
   - Server-side warmup data loading and row mapping.
 
@@ -83,7 +90,7 @@
 - `apps/web/app/(app)/mailboxes/page.tsx`
   - Load warmup data alongside existing mailboxes.
 - `apps/web/components/mailboxes/mailboxes-workspace.tsx`
-  - Add a top tab switcher inside the Mailboxes workspace. The default tab keeps current mailbox capacity/connection UI; the Warmup tab contains all warmup summary, seed, and per-mailbox controls.
+  - Add a top tab switcher inside the Mailboxes workspace. The default tab keeps current mailbox capacity/connection UI; the Warmup tab contains warmup summary and per-mailbox controls only.
 - `apps/web/app/styles/pages.css`
   - Add compact dashboard styles for warmup metrics.
 - `apps/web/test/frontend-invariants.test.ts`

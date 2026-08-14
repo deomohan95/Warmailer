@@ -7,6 +7,9 @@ const migrationName = readdirSync(new URL("../migrations", import.meta.url)).fin
 );
 assert.ok(migrationName, "expected an add_warmup migration");
 const migration = readFileSync(new URL(`../migrations/${migrationName}`, import.meta.url), "utf8");
+const migrations = readdirSync(new URL("../migrations", import.meta.url))
+  .map((name) => readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"))
+  .join("\n");
 
 function source(path) {
   const url = new URL(`../../${path}`, import.meta.url);
@@ -73,4 +76,10 @@ test("warmup API routes use shared contracts and normalized Composio env", () =>
   assert.doesNotMatch(seedRoute, /Composio_api_key/);
   assert.match(envExample, /COMPOSIO_API_KEY=/);
   assert.match(envExample, /COMPOSIO_GMAIL_TOOLKIT_VERSION=20260721_00/);
+});
+
+test("warmup seed accounts are app-admin owned, not browser-readable workspace data", () => {
+  assert.match(migrations, /drop policy if exists "members can view warmup seeds" on public\.warmup_seed_accounts/i);
+  assert.match(migrations, /drop policy if exists "admins can manage warmup seeds" on public\.warmup_seed_accounts/i);
+  assert.match(migrations, /revoke select, insert, update, delete on public\.warmup_seed_accounts from authenticated/i);
 });

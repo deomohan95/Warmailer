@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 
 import { WarmupSeedCreateInputSchema } from "../../../../../../packages/contracts/src/index";
+import { requireWarmupAdmin } from "@/lib/admin";
 import { envValue, getActiveWorkspace } from "@/lib/backend-data";
 
 export const runtime = "nodejs";
@@ -21,6 +22,7 @@ type WarmupSeedRow = {
 
 export async function GET() {
   try {
+    await requireWarmupAdmin();
     const workspace = await getActiveWorkspace();
     const rows = await supabaseGet<WarmupSeedRow[]>(
       `warmup_seed_accounts?workspace_id=eq.${encodeURIComponent(workspace.workspaceId)}&select=id,workspace_id,provider,email_address,status,last_checked_at,created_at,updated_at&order=created_at.desc`,
@@ -39,12 +41,14 @@ export async function GET() {
       })),
     });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Warmup seeds load failed" }, { status: 400 });
+    const message = error instanceof Error ? error.message : "Warmup seeds load failed";
+    return NextResponse.json({ error: message }, { status: message === "Forbidden" ? 403 : 400 });
   }
 }
 
 export async function POST(request: Request) {
   try {
+    await requireWarmupAdmin();
     const input = WarmupSeedCreateInputSchema.parse(await request.json());
     const workspace = await getActiveWorkspace();
     const seedAccountId = randomUUID();
@@ -62,11 +66,11 @@ export async function POST(request: Request) {
       updated_at: now,
     });
 
-    revalidatePath("/mailboxes");
+    revalidatePath("/settings/admin");
     return NextResponse.json({ seedAccountId });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Warmup seed save failed";
-    return NextResponse.json({ error: message }, { status: message.includes("duplicate") ? 409 : 400 });
+    return NextResponse.json({ error: message }, { status: message === "Forbidden" ? 403 : message.includes("duplicate") ? 409 : 400 });
   }
 }
 

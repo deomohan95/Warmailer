@@ -284,17 +284,17 @@ describe("app passwords are write-only", () => {
 });
 
 describe("warmup wiring", () => {
-  it("loads warmup stats and seeds from backend data, not demo state", async () => {
+  it("loads warmup mailbox stats from backend data, not demo state", async () => {
     const page = await source("app/(app)/mailboxes/page.tsx");
     const data = await source("lib/warmup-data.ts");
 
     expect(page).toContain("getWarmupMailboxStats");
-    expect(page).toContain("getWarmupSeeds");
+    expect(page).not.toContain("getWarmupSeeds");
     expect(data).toContain("warmup_mailbox_stats");
     expect(data).toContain("warmup_seed_accounts");
   });
 
-  it("shows warmup metrics, controls, and Gmail seed count on mailboxes", async () => {
+  it("shows warmup metrics and mailbox controls without seed account admin UI", async () => {
     const component = await source("components/mailboxes/mailboxes-workspace.tsx");
 
     expect(component).toContain('type MailboxTab = "mailboxes" | "warmup"');
@@ -303,13 +303,29 @@ describe("warmup wiring", () => {
     expect(component).toContain("Saved from spam");
     expect(component).toContain("Landed in inbox");
     expect(component).toContain("Warmup emails sent");
-    expect(component).toContain("Gmail seed accounts");
+    expect(component).not.toContain("Gmail seed accounts");
+    expect(component).not.toContain('fetch("/api/warmup/seeds"');
     expect(component).toContain("sentToday");
     expect(component).toContain("warmupTargetToday");
     expect(component).toContain("warmupDailyLimit");
     expect(component).toContain("warmupDailyRampup");
     expect(component).toContain("warmupRandomizeDailyCount");
     expect(component).toContain("warmupReplyRatePercent");
+  });
+
+  it("keeps warmup seed management behind the app owner admin gate", async () => {
+    const settingsPage = await source("app/(app)/settings/page.tsx");
+    const adminPage = await source("app/(app)/settings/admin/page.tsx");
+    const adminComponent = await source("components/settings/warmup-admin.tsx");
+    const seedRoute = await source("app/api/warmup/seeds/route.ts");
+
+    expect(settingsPage).toContain("isWarmupAdminEmail");
+    expect(settingsPage).toContain("/settings/admin");
+    expect(adminPage).toContain("requireWarmupAdmin");
+    expect(adminPage).toContain("getWarmupSeeds");
+    expect(adminComponent).toContain("Gmail seed accounts");
+    expect(adminComponent).toContain('fetch("/api/warmup/seeds"');
+    expect(seedRoute).toContain("requireWarmupAdmin");
   });
 });
 

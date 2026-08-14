@@ -1,6 +1,7 @@
 import { IconAlert, IconLeads } from "@/components/icons";
 import { Card, EmptyState, Notice, PageHeader, StatusPill } from "@/components/ui/primitives";
-import { getActiveWorkspace } from "@/lib/backend-data";
+import { isWarmupAdminEmail } from "@/lib/admin";
+import { getActiveWorkspace, getAuthUser } from "@/lib/backend-data";
 
 export const metadata = { title: "Settings · Warmailer" };
 
@@ -25,7 +26,8 @@ function Section({
 }
 
 export default async function SettingsPage() {
-  const { workspaceId, name, role } = await getActiveWorkspace();
+  const [{ workspaceId, name, role }, user] = await Promise.all([getActiveWorkspace(), getAuthUser()]);
+  const isWarmupAdmin = isWarmupAdminEmail(user?.email);
 
   return (
     <main className="page">
@@ -146,6 +148,14 @@ export default async function SettingsPage() {
               description="Plan and usage will appear here. There is nothing to charge against yet."
             />
           </Section>
+
+          {isWarmupAdmin ? (
+            <Section title="Admin" description="Internal tools for app-owned warmup infrastructure.">
+              <a className="btn btn-secondary" href="/settings/admin">
+                Open warmup admin
+              </a>
+            </Section>
+          ) : null}
         </div>
       </Card>
     </main>
