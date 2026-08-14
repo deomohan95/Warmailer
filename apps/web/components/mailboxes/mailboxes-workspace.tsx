@@ -252,7 +252,7 @@ function WarmupPanel({
                 <thead>
                   <tr>
                     <th scope="col">Mailbox</th>
-                    <th scope="col">7d sent</th>
+                    <th scope="col">Today</th>
                     <th scope="col">Limit</th>
                     <th scope="col">Ramp</th>
                     <th scope="col">Randomized</th>
@@ -273,7 +273,8 @@ function WarmupPanel({
                           <div className="cell-sub">{state.warmupEnabled ? "Warmup enabled" : "Warmup disabled"}</div>
                         </td>
                         <td className="num">
-                          {(stat?.sent7d ?? 0).toLocaleString()} / {state.warmupDailyLimit}
+                          {(stat?.sentToday ?? 0).toLocaleString()} /{" "}
+                          {(stat?.warmupTargetToday ?? Math.min(state.warmupDailyLimit, state.warmupDailyRampup)).toLocaleString()}
                         </td>
                         <td>
                           <input

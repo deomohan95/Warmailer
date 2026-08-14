@@ -51,9 +51,9 @@ export async function runWarmupCycle({
 
   if (jobs.schedule) {
     const seeds = await db.getWarmupSeeds();
-    for (const mailbox of await db.getWarmupReadyMailboxes()) {
+    for (const mailbox of await db.getWarmupReadyMailboxes(now)) {
       const target = warmupTargetForDay(mailbox, now);
-      if (Number(mailbox.sent_today ?? 0) >= target) continue;
+      if (Number(mailbox.warmup_count_today ?? mailbox.sent_today ?? 0) >= target) continue;
       const seed = seeds.filter((row) => row.workspace_id === mailbox.workspace_id).sort((a, b) => Number(a.received_24h ?? 0) - Number(b.received_24h ?? 0))[0];
       if (!seed) continue;
       const token = `WMUP-${randomUUID()}`;
@@ -97,34 +97,38 @@ export async function runWarmupCycle({
 
   if (jobs.check) {
     for (const warmup of await db.getSentWarmupMessagesNeedingCheck(now)) {
-      const seed = warmup.seed;
-      const found = await gmail.findWarmupMessage({
-        userId: seed.composio_user_id,
-        connectedAccountId: seed.composio_connected_account_id,
-        token: warmup.token,
-      });
-      if (!found) continue;
-      await db.markWarmupPlacement(warmup.id, found.folder, found.id, found.threadId);
-      await db.insertWarmupEvent(eventRow(warmup, found.folder === "spam" ? "landed_spam" : "landed_inbox", "gmail_composio", `gmail:${found.id}`));
-      summary.checked++;
+      try {
+        const seed = warmup.seed;
+        const found = await gmail.findWarmupMessage({
+          userId: seed.composio_user_id,
+          connectedAccountId: seed.composio_connected_account_id,
+          token: warmup.token,
+        });
+        if (!found) continue;
+        await db.markWarmupPlacement(warmup.id, found.folder, found.id, found.threadId);
+        await db.insertWarmupEvent(eventRow(warmup, found.folder === "spam" ? "landed_spam" : "landed_inbox", "gmail_composio", `gmail:${found.id}`));
+        summary.checked++;
 
-      const args = { userId: seed.composio_user_id, connectedAccountId: seed.composio_connected_account_id, messageId: found.id };
-      if (found.folder === "spam") {
-        await gmail.moveFromSpamToInbox(args);
-        await db.markWarmupRescued(warmup.id);
-        await db.insertWarmupEvent(eventRow(warmup, "saved_from_spam", "gmail_composio", `gmail-rescue:${found.id}`));
-        summary.savedFromSpam++;
-      }
-      if (found.folder === "spam" || shouldMarkInboxImportant(warmup.sender)) {
-        await gmail.markImportant(args);
-        await db.markWarmupImportant(warmup.id);
-        await db.insertWarmupEvent(eventRow(warmup, "marked_important", "gmail_composio", `gmail-important:${found.id}`));
-      }
-      if (!warmup.replied_at && shouldReply(warmup.sender)) {
-        await gmail.replyToThread({ ...args, threadId: found.threadId, body: REPLIES[summary.replied % REPLIES.length] });
-        await db.markWarmupReplied(warmup.id);
-        await db.insertWarmupEvent(eventRow(warmup, "reply_sent", "gmail_composio", `gmail-reply:${found.threadId}`));
-        summary.replied++;
+        const args = { userId: seed.composio_user_id, connectedAccountId: seed.composio_connected_account_id, messageId: found.id };
+        if (found.folder === "spam") {
+          await gmail.moveFromSpamToInbox(args);
+          await db.markWarmupRescued(warmup.id);
+          await db.insertWarmupEvent(eventRow(warmup, "saved_from_spam", "gmail_composio", `gmail-rescue:${found.id}`));
+          summary.savedFromSpam++;
+        }
+        if (found.folder === "spam" || shouldMarkInboxImportant(warmup.sender)) {
+          await gmail.markImportant(args);
+          await db.markWarmupImportant(warmup.id);
+          await db.insertWarmupEvent(eventRow(warmup, "marked_important", "gmail_composio", `gmail-important:${found.id}`));
+        }
+        if (!warmup.replied_at && shouldReply(warmup.sender)) {
+          await gmail.replyToThread({ ...args, threadId: found.threadId, body: REPLIES[summary.replied % REPLIES.length] });
+          await db.markWarmupReplied(warmup.id);
+          await db.insertWarmupEvent(eventRow(warmup, "reply_sent", "gmail_composio", `gmail-reply:${found.threadId}`));
+          summary.replied++;
+        }
+      } catch {
+        summary.failed++;
       }
     }
   }
@@ -203,9 +207,9 @@ function supabaseDb(config, fetchImpl) {
   const patch = (path, body) => request(path, { method: "PATCH", headers: { prefer: "return=minimal" }, body: JSON.stringify(body) });
 
   return {
-    getWarmupReadyMailboxes: async () => {
+    getWarmupReadyMailboxes: async (now = new Date()) => {
       const rows = await get("mailboxes?warmup_enabled=eq.true&status=in.(connected,warming)&select=*&limit=100");
-      return Promise.all(rows.map(async (row) => ({ ...row, sent_today: await sentToday(get, row, new Date()) })));
+      return Promise.all(rows.map(async (row) => ({ ...row, warmup_count_today: await countWarmupToday(get, row, now) })));
     },
     getWarmupSeeds: () => get("warmup_seed_accounts?status=eq.connected&select=*"),
     insertWarmupMessage: (row) => post("warmup_messages", row),
@@ -217,16 +221,16 @@ function supabaseDb(config, fetchImpl) {
       });
       return enrichWarmupRows(get, (await response.json()) ?? []);
     },
-    getSentWarmupMessagesNeedingCheck: () =>
+    getSentWarmupMessagesNeedingCheck: (now = new Date()) =>
       enrichWarmupRows(
         get,
         [],
-        "warmup_messages?status=eq.sent&sent_at=not.is.null&landed_folder=is.null&sent_at=lt." +
-          encodeURIComponent(new Date(Date.now() - 90000).toISOString()) +
+        "warmup_messages?status=eq.sent&sent_at=not.is.null&or=(landed_folder.is.null,and(landed_folder.eq.spam,rescued_at.is.null))&sent_at=lt." +
+          encodeURIComponent(new Date(now.getTime() - 90000).toISOString()) +
           "&select=*&order=sent_at.asc&limit=50",
       ),
     markWarmupSent: (id, messageId) => patch(`warmup_messages?id=eq.${id}`, { status: "sent", sent_at: new Date().toISOString(), sender_provider_message_id: messageId, updated_at: new Date().toISOString() }),
-    markWarmupPlacement: (id, folder, gmailMessageId, threadId) => patch(`warmup_messages?id=eq.${id}`, { status: folder === "spam" ? "saved_from_spam" : "landed_inbox", landed_folder: folder, seed_provider_message_id: gmailMessageId, seed_thread_id: threadId, updated_at: new Date().toISOString() }),
+    markWarmupPlacement: (id, folder, gmailMessageId, threadId) => patch(`warmup_messages?id=eq.${id}`, { status: folder === "spam" ? "sent" : "landed_inbox", landed_folder: folder, seed_provider_message_id: gmailMessageId, seed_thread_id: threadId, updated_at: new Date().toISOString() }),
     markWarmupRescued: (id) => patch(`warmup_messages?id=eq.${id}`, { status: "saved_from_spam", rescued_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
     markWarmupImportant: (id) => patch(`warmup_messages?id=eq.${id}`, { marked_important_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
     markWarmupReplied: (id) => patch(`warmup_messages?id=eq.${id}`, { status: "replied", replied_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
@@ -251,21 +255,20 @@ async function enrichWarmupRows(get, rows, path) {
   return base.map((row) => ({ ...row, sender: byMailbox.get(row.mailbox_id), seed: bySeed.get(row.seed_account_id) })).filter((row) => row.sender && row.seed);
 }
 
-async function sentToday(get, mailbox, now) {
-  const date = localDate(now, mailbox.timezone);
+async function countWarmupToday(get, mailbox, now) {
+  const { start, end } = localDayBounds(now, mailbox.timezone);
   const rows = await get(
-    `warmup_messages?mailbox_id=eq.${mailbox.id}&sent_at=gte.${date}T00:00:00.000Z&sent_at=lt.${date}T23:59:59.999Z&select=id`,
+    `warmup_messages?mailbox_id=eq.${encodeURIComponent(mailbox.id)}&scheduled_for=gte.${encodeURIComponent(start.toISOString())}&scheduled_for=lt.${encodeURIComponent(end.toISOString())}&status=in.(scheduled,claimed,sent,landed_inbox,saved_from_spam,replied)&select=id`,
   );
   return rows.length;
 }
 
 function scheduledFor(mailbox, now) {
-  const [startHour = 9] = String(mailbox.sending_window_start ?? "09:00").split(":").map(Number);
-  const [endHour = 17] = String(mailbox.sending_window_end ?? "17:00").split(":").map(Number);
-  const start = new Date(now);
-  start.setUTCHours(startHour, 0, 0, 0);
-  const end = new Date(now);
-  end.setUTCHours(endHour, 0, 0, 0);
+  const [startHour = 9, startMinute = 0] = String(mailbox.sending_window_start ?? "09:00").split(":").map(Number);
+  const [endHour = 17, endMinute = 0] = String(mailbox.sending_window_end ?? "17:00").split(":").map(Number);
+  const parts = zonedParts(now, mailbox.timezone);
+  const start = zonedTimeToUtc({ ...parts, hour: startHour, minute: startMinute }, mailbox.timezone);
+  const end = zonedTimeToUtc({ ...parts, hour: endHour, minute: endMinute }, mailbox.timezone);
   if (end <= start || now > end) return now;
   const min = Math.max(now.getTime(), start.getTime());
   return new Date(min + Math.floor(Math.random() * (end.getTime() - min)));
@@ -284,13 +287,45 @@ function eventRow(warmup, event_type, source, provider_event_id) {
   };
 }
 
-function localDate(now, timeZone = "UTC") {
+function localDayBounds(now, timeZone = "UTC") {
+  const parts = zonedParts(now, timeZone);
+  return {
+    start: zonedTimeToUtc({ ...parts, hour: 0, minute: 0 }, timeZone),
+    end: zonedTimeToUtc({ ...parts, day: parts.day + 1, hour: 0, minute: 0 }, timeZone),
+  };
+}
+
+function zonedParts(date, timeZone = "UTC") {
   const parts = Object.fromEntries(
-    new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" })
-      .formatToParts(now)
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+      .formatToParts(date)
       .map((part) => [part.type, part.value]),
   );
-  return `${parts.year}-${parts.month}-${parts.day}`;
+  return {
+    year: Number(parts.year),
+    month: Number(parts.month),
+    day: Number(parts.day),
+    hour: Number(parts.hour),
+    minute: Number(parts.minute),
+  };
+}
+
+function zonedTimeToUtc(parts, timeZone = "UTC") {
+  const target = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, 0, 0);
+  let utc = target;
+  for (let i = 0; i < 2; i++) {
+    const actual = zonedParts(new Date(utc), timeZone);
+    utc += target - Date.UTC(actual.year, actual.month - 1, actual.day, actual.hour, actual.minute, 0, 0);
+  }
+  return new Date(utc);
 }
 
 function readLocalEnv() {

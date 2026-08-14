@@ -24,6 +24,10 @@ test("warmup rows are workspace-owned and linked to sender and seed accounts", (
     migration,
     /foreign key \(seed_account_id, workspace_id\) references public\.warmup_seed_accounts\(id, workspace_id\)/i,
   );
+  assert.match(
+    migration,
+    /foreign key \(warmup_message_id, workspace_id\) references public\.warmup_messages\(id, workspace_id\)/i,
+  );
 });
 
 test("warmup settings include defaults and reply rate cap", () => {
@@ -39,6 +43,8 @@ test("warmup reputation is derived from events and messages", () => {
   assert.match(migration, /create or replace view public\.warmup_mailbox_stats/i);
   assert.match(migration, /with \(security_invoker = true\)/i);
   assert.match(migration, /saved_from_spam_7d/i);
+  assert.match(migration, /sent_today/i);
+  assert.match(migration, /warmup_target_today/i);
   assert.match(migration, /reputation/i);
 });
 
@@ -61,6 +67,8 @@ test("warmup API routes use shared contracts and normalized Composio env", () =>
   const envExample = source(".env.example");
 
   assert.match(mailboxRoute, /WarmupMailboxUpdateInputSchema/);
+  assert.match(mailboxRoute, /existingMailbox/);
+  assert.doesNotMatch(mailboxRoute, /status: input\.warmupEnabled \? "warming" : "connected"/);
   assert.match(seedRoute, /WarmupSeedCreateInputSchema/);
   assert.doesNotMatch(seedRoute, /Composio_api_key/);
   assert.match(envExample, /COMPOSIO_API_KEY=/);

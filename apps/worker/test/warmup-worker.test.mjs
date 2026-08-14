@@ -59,6 +59,72 @@ test("schedules one warmup message for each enabled mailbox under its daily limi
   assert.match(inserted[0].body_text, /WMUP-/);
 });
 
+test("does not schedule beyond today's queued warmup target", async () => {
+  const inserted = [];
+  const result = await runWarmupCycle({
+    now: new Date("2026-08-14T10:00:00.000Z"),
+    db: {
+      getWarmupReadyMailboxes: async () => [
+        {
+          id: "mb1",
+          workspace_id: "ws1",
+          warmup_daily_limit: 25,
+          warmup_daily_rampup: 5,
+          warmup_randomize_daily_count: false,
+          warmup_started_at: "2026-08-14T00:00:00.000Z",
+          warmup_count_today: 5,
+        },
+      ],
+      getWarmupSeeds: async () => [{ id: "seed1", workspace_id: "ws1", email_address: "seed@gmail.com" }],
+      insertWarmupMessage: async (row) => inserted.push(row),
+      claimWarmupMessages: async () => [],
+      getSentWarmupMessagesNeedingCheck: async () => [],
+    },
+    sendMail: async () => {},
+    gmail: {},
+  });
+
+  assert.equal(result.scheduled, 0);
+  assert.equal(inserted.length, 0);
+});
+
+test("schedules inside the mailbox timezone window", async () => {
+  const random = Math.random;
+  Math.random = () => 0;
+  const inserted = [];
+  try {
+    await runWarmupCycle({
+      now: new Date("2026-08-14T05:00:00.000Z"),
+      db: {
+        getWarmupReadyMailboxes: async () => [
+          {
+            id: "mb1",
+            workspace_id: "ws1",
+            warmup_daily_limit: 25,
+            warmup_daily_rampup: 5,
+            warmup_randomize_daily_count: false,
+            warmup_started_at: "2026-08-14T00:00:00.000Z",
+            warmup_count_today: 0,
+            timezone: "Asia/Kolkata",
+            sending_window_start: "09:00",
+            sending_window_end: "17:00",
+          },
+        ],
+        getWarmupSeeds: async () => [{ id: "seed1", workspace_id: "ws1", email_address: "seed@gmail.com" }],
+        insertWarmupMessage: async (row) => inserted.push(row),
+        claimWarmupMessages: async () => [],
+        getSentWarmupMessagesNeedingCheck: async () => [],
+      },
+      sendMail: async () => {},
+      gmail: {},
+    });
+  } finally {
+    Math.random = random;
+  }
+
+  assert.equal(inserted[0].scheduled_for, "2026-08-14T05:00:00.000Z");
+});
+
 test("sends claimed warmup message through the sender mailbox", async () => {
   const calls = [];
   const result = await runWarmupCycle({
@@ -131,4 +197,49 @@ test("records spam placement, rescues it, marks important, and sometimes replies
 
   assert.equal(result.savedFromSpam, 1);
   assert.deepEqual(calls.filter((call) => call[0] === "gmail").map((call) => call[1]), ["move", "important", "reply"]);
+});
+
+test("keeps spam rescue retryable when gmail move fails", async () => {
+  const calls = [];
+  const result = await runWarmupCycle({
+    db: {
+      getWarmupReadyMailboxes: async () => [],
+      getWarmupSeeds: async () => [],
+      claimWarmupMessages: async () => [],
+      getSentWarmupMessagesNeedingCheck: async () => [
+        {
+          id: "warm1",
+          workspace_id: "ws1",
+          mailbox_id: "mb1",
+          seed_account_id: "seed1",
+          token: "WMUP-1",
+          sender: { warmup_reply_rate_percent: 100 },
+          seed: { composio_user_id: "seed-user", composio_connected_account_id: "ca_seed" },
+        },
+      ],
+      markWarmupPlacement: async (id, folder) => calls.push(["placement", folder]),
+      markWarmupRescued: async (id) => calls.push(["rescued", id]),
+      markWarmupImportant: async (id) => calls.push(["important", id]),
+      markWarmupReplied: async (id) => calls.push(["replied", id]),
+      insertWarmupEvent: async (row) => calls.push(["event", row.event_type]),
+    },
+    gmail: {
+      findWarmupMessage: async () => ({ id: "gmail-1", threadId: "thread-1", folder: "spam" }),
+      moveFromSpamToInbox: async () => {
+        calls.push(["gmail", "move"]);
+        throw new Error("move failed");
+      },
+      markImportant: async () => calls.push(["gmail", "important"]),
+      replyToThread: async () => calls.push(["gmail", "reply"]),
+    },
+    shouldReply: () => true,
+    sendMail: async () => {},
+  });
+
+  assert.equal(result.failed, 1);
+  assert.deepEqual(calls.map((call) => call.join(":")), [
+    "placement:spam",
+    "event:landed_spam",
+    "gmail:move",
+  ]);
 });

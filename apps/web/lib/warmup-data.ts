@@ -11,6 +11,8 @@ type WarmupStatsRow = {
   warmup_randomize_daily_count: boolean;
   warmup_reply_rate_percent: number;
   warmup_started_at: string | null;
+  sent_today: number;
+  warmup_target_today: number;
   sent_7d: number;
   inbox_7d: number;
   spam_7d: number;
@@ -65,6 +67,8 @@ export function mapWarmupStatsRow(row: WarmupStatsRow): WarmupMailboxStats {
     warmupRandomizeDailyCount: row.warmup_randomize_daily_count,
     warmupReplyRatePercent: row.warmup_reply_rate_percent,
     warmupStartedAt: row.warmup_started_at ?? undefined,
+    sentToday: row.sent_today,
+    warmupTargetToday: row.warmup_target_today,
     sent7d: row.sent_7d,
     inbox7d: row.inbox_7d,
     spam7d: row.spam_7d,

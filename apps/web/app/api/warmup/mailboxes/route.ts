@@ -6,25 +6,42 @@ import { envValue, getActiveWorkspace } from "@/lib/backend-data";
 
 export const runtime = "nodejs";
 
+type ExistingMailbox = {
+  id: string;
+  status: "not_connected" | "connected" | "warming" | "sending_paused" | "error";
+  warmup_enabled: boolean;
+  warmup_started_at: string | null;
+};
+
 export async function PATCH(request: Request) {
   try {
     const input = WarmupMailboxUpdateInputSchema.parse(await request.json());
     const workspace = await getActiveWorkspace();
     const now = new Date().toISOString();
+    const mailboxPath = `mailboxes?id=eq.${encodeURIComponent(input.mailboxId)}&workspace_id=eq.${encodeURIComponent(workspace.workspaceId)}`;
+    const existingMailbox = (
+      await supabaseGet<ExistingMailbox[]>(`${mailboxPath}&select=id,status,warmup_enabled,warmup_started_at&limit=1`)
+    )[0];
+    if (!existingMailbox) throw new Error("Mailbox not found");
+    const nextStatus =
+      input.warmupEnabled && existingMailbox.status === "connected"
+        ? "warming"
+        : !input.warmupEnabled && existingMailbox.status === "warming"
+          ? "connected"
+          : existingMailbox.status;
+    const patch: Record<string, unknown> = {
+      warmup_enabled: input.warmupEnabled,
+      warmup_daily_limit: input.warmupDailyLimit,
+      warmup_daily_rampup: input.warmupDailyRampup,
+      warmup_randomize_daily_count: input.warmupRandomizeDailyCount,
+      warmup_reply_rate_percent: input.warmupReplyRatePercent,
+      status: nextStatus,
+      updated_at: now,
+    };
+    if (input.warmupEnabled && !existingMailbox.warmup_enabled) patch.warmup_started_at = now;
+    if (!input.warmupEnabled) patch.warmup_started_at = null;
 
-    await supabasePatch(
-      `mailboxes?id=eq.${encodeURIComponent(input.mailboxId)}&workspace_id=eq.${encodeURIComponent(workspace.workspaceId)}`,
-      {
-        warmup_enabled: input.warmupEnabled,
-        warmup_daily_limit: input.warmupDailyLimit,
-        warmup_daily_rampup: input.warmupDailyRampup,
-        warmup_randomize_daily_count: input.warmupRandomizeDailyCount,
-        warmup_reply_rate_percent: input.warmupReplyRatePercent,
-        warmup_started_at: input.warmupEnabled ? now : null,
-        status: input.warmupEnabled ? "warming" : "connected",
-        updated_at: now,
-      },
-    );
+    await supabasePatch(mailboxPath, patch);
 
     await supabasePost("mailbox_events", {
       workspace_id: workspace.workspaceId,
@@ -61,6 +78,10 @@ async function supabasePatch(path: string, body: unknown) {
     headers: { "content-type": "application/json", prefer: "return=minimal" },
     body: JSON.stringify(body),
   });
+}
+
+async function supabaseGet<T>(path: string): Promise<T> {
+  return (await (await supabaseFetch(path, { method: "GET" })).json()) as T;
 }
 
 async function supabaseFetch(path: string, init: RequestInit) {

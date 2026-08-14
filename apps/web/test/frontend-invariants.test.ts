@@ -304,6 +304,8 @@ describe("warmup wiring", () => {
     expect(component).toContain("Landed in inbox");
     expect(component).toContain("Warmup emails sent");
     expect(component).toContain("Gmail seed accounts");
+    expect(component).toContain("sentToday");
+    expect(component).toContain("warmupTargetToday");
     expect(component).toContain("warmupDailyLimit");
     expect(component).toContain("warmupDailyRampup");
     expect(component).toContain("warmupRandomizeDailyCount");

@@ -66,6 +66,7 @@ create table if not exists public.warmup_messages (
   error text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  unique (id, workspace_id),
   unique (workspace_id, token),
   foreign key (mailbox_id, workspace_id) references public.mailboxes(id, workspace_id) on delete cascade,
   foreign key (seed_account_id, workspace_id) references public.warmup_seed_accounts(id, workspace_id) on delete restrict
@@ -89,7 +90,7 @@ create table if not exists public.warmup_events (
   metadata jsonb not null default '{}'::jsonb,
   occurred_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
-  foreign key (warmup_message_id) references public.warmup_messages(id) on delete cascade,
+  foreign key (warmup_message_id, workspace_id) references public.warmup_messages(id, workspace_id) on delete cascade,
   foreign key (mailbox_id, workspace_id) references public.mailboxes(id, workspace_id) on delete cascade,
   foreign key (seed_account_id, workspace_id) references public.warmup_seed_accounts(id, workspace_id) on delete restrict
 );
@@ -132,6 +133,17 @@ select
   m.warmup_randomize_daily_count,
   m.warmup_reply_rate_percent,
   m.warmup_started_at,
+  count(wm.id) filter (
+    where wm.sent_at >= (date_trunc('day', now() at time zone m.timezone) at time zone m.timezone)
+      and wm.sent_at < ((date_trunc('day', now() at time zone m.timezone) + interval '1 day') at time zone m.timezone)
+  )::integer as sent_today,
+  least(
+    m.warmup_daily_limit,
+    greatest(
+      1,
+      (((now() at time zone m.timezone)::date - (coalesce(m.warmup_started_at, now()) at time zone m.timezone)::date) + 1)::integer
+    ) * m.warmup_daily_rampup
+  )::integer as warmup_target_today,
   count(wm.id) filter (where wm.sent_at >= now() - interval '7 days')::integer as sent_7d,
   count(wm.id) filter (where wm.landed_folder = 'inbox' and wm.sent_at >= now() - interval '7 days')::integer as inbox_7d,
   count(wm.id) filter (where wm.landed_folder = 'spam' and wm.sent_at >= now() - interval '7 days')::integer as spam_7d,
