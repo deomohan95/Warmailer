@@ -198,6 +198,14 @@ describe("app icon", () => {
   });
 });
 
+describe("root layout", () => {
+  it("suppresses body hydration warnings from browser extension attributes", async () => {
+    const layout = await source("app/layout.tsx");
+
+    expect(layout).toContain("<body suppressHydrationWarning>{children}</body>");
+  });
+});
+
 describe("mailbox hard limits gate campaign launch", () => {
   it("allows launch when the selection fits inside available capacity", () => {
     expect(check()).toEqual([]);
