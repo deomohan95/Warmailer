@@ -3,8 +3,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import nodemailer from "nodemailer";
+
 import { createComposioGmail } from "./composio-gmail.mjs";
-import { sendSmtp } from "./mail-worker.mjs";
 import { decryptSecret } from "./mailbox-secrets.mjs";
 
 const TEMPLATES = [
@@ -160,6 +161,18 @@ export function buildWarmupDeps(config = loadWarmupConfig(), fetchImpl = fetch) 
   };
 }
 
+export async function sendSmtp(payload, config = {}) {
+  const port = Number(payload.port ?? config.smtpPort ?? 465);
+  return nodemailer
+    .createTransport({
+      host: payload.host ?? config.smtpHost,
+      port,
+      secure: port === 465,
+      auth: { user: payload.user, pass: payload.pass },
+    })
+    .sendMail(payload);
+}
+
 function validateWarmupConfig(config) {
   if (!config.supabaseUrl) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL");
   if (!config.supabaseKey) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
@@ -283,9 +296,9 @@ function localDate(now, timeZone = "UTC") {
 function readLocalEnv() {
   const start = dirname(fileURLToPath(import.meta.url));
   for (const file of [resolve(start, "../../../.env.local"), join(process.cwd(), ".env.local")]) {
-    if (!existsSync(file)) continue;
+    if (!existsSync(/* turbopackIgnore: true */ file)) continue;
     return Object.fromEntries(
-      readFileSync(file, "utf8")
+      readFileSync(/* turbopackIgnore: true */ file, "utf8")
         .split(/\r?\n/)
         .map((line) => line.trim())
         .filter((line) => line && !line.startsWith("#") && line.includes("="))
