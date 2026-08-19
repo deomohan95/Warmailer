@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const deps: any = buildWarmupDeps(loadWarmupConfig());
+  const deps = buildWarmupDeps(loadWarmupConfig());
   const summary = await runWarmupCycle(deps);
   return NextResponse.json(summary);
 }

@@ -50,11 +50,14 @@ export async function runWarmupCycle({
   const summary = { scheduled: 0, sent: 0, checked: 0, savedFromSpam: 0, replied: 0, failed: 0 };
 
   if (jobs.schedule) {
-    const seeds = await db.getWarmupSeeds();
+    const seeds = await db.getWarmupSeeds(now);
+    const seedLoads = new Map(seeds.map((seed) => [seed.id, Number(seed.warmup_count_24h ?? seed.received_24h ?? 0)]));
     for (const mailbox of await db.getWarmupReadyMailboxes(now)) {
       const target = warmupTargetForDay(mailbox, now);
       if (Number(mailbox.warmup_count_today ?? mailbox.sent_today ?? 0) >= target) continue;
-      const seed = seeds.filter((row) => row.workspace_id === mailbox.workspace_id).sort((a, b) => Number(a.received_24h ?? 0) - Number(b.received_24h ?? 0))[0];
+      const seed = seeds
+        .filter((row) => row.workspace_id === mailbox.workspace_id)
+        .sort((a, b) => (seedLoads.get(a.id) ?? 0) - (seedLoads.get(b.id) ?? 0) || String(a.email_address).localeCompare(String(b.email_address)))[0];
       if (!seed) continue;
       const token = `WMUP-${randomUUID()}`;
       const template = TEMPLATES[summary.scheduled % TEMPLATES.length];
@@ -67,6 +70,7 @@ export async function runWarmupCycle({
         body_text: template.body.replace("{{token}}", token),
         scheduled_for: scheduledFor(mailbox, now).toISOString(),
       });
+      seedLoads.set(seed.id, (seedLoads.get(seed.id) ?? 0) + 1);
       summary.scheduled++;
     }
   }
@@ -211,7 +215,10 @@ function supabaseDb(config, fetchImpl) {
       const rows = await get("mailboxes?warmup_enabled=eq.true&status=in.(connected,warming)&select=*&limit=100");
       return Promise.all(rows.map(async (row) => ({ ...row, warmup_count_today: await countWarmupToday(get, row, now) })));
     },
-    getWarmupSeeds: () => get("warmup_seed_accounts?status=eq.connected&select=*"),
+    getWarmupSeeds: async (now = new Date()) => {
+      const rows = await get("warmup_seed_accounts?status=eq.connected&select=*");
+      return Promise.all(rows.map(async (row) => ({ ...row, warmup_count_24h: await countWarmupSeed24h(get, row, now) })));
+    },
     insertWarmupMessage: (row) => post("warmup_messages", row),
     claimWarmupMessages: async (limit) => {
       const response = await request("rpc/claim_warmup_messages", {
@@ -263,13 +270,22 @@ async function countWarmupToday(get, mailbox, now) {
   return rows.length;
 }
 
+async function countWarmupSeed24h(get, seed, now) {
+  const since = new Date(now.getTime() - 86400000);
+  const rows = await get(
+    `warmup_messages?seed_account_id=eq.${encodeURIComponent(seed.id)}&scheduled_for=gte.${encodeURIComponent(since.toISOString())}&status=in.(scheduled,claimed,sent,landed_inbox,saved_from_spam,replied)&select=id`,
+  );
+  return rows.length;
+}
+
 function scheduledFor(mailbox, now) {
   const [startHour = 9, startMinute = 0] = String(mailbox.sending_window_start ?? "09:00").split(":").map(Number);
   const [endHour = 17, endMinute = 0] = String(mailbox.sending_window_end ?? "17:00").split(":").map(Number);
   const parts = zonedParts(now, mailbox.timezone);
   const start = zonedTimeToUtc({ ...parts, hour: startHour, minute: startMinute }, mailbox.timezone);
   const end = zonedTimeToUtc({ ...parts, hour: endHour, minute: endMinute }, mailbox.timezone);
-  if (end <= start || now > end) return now;
+  if (end <= start) return now;
+  if (now > end) return zonedTimeToUtc({ ...parts, day: parts.day + 1, hour: startHour, minute: startMinute }, mailbox.timezone);
   const min = Math.max(now.getTime(), start.getTime());
   return new Date(min + Math.floor(Math.random() * (end.getTime() - min)));
 }

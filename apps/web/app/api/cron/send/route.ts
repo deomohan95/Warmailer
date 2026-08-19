@@ -38,7 +38,7 @@ type SendConfig = {
   smtpPort: number;
 };
 
-type MailboxRow = Record<string, any> & {
+type MailboxRow = Record<string, unknown> & {
   id: string;
   smtp_host?: string | null;
   smtp_port?: number | null;
@@ -147,7 +147,7 @@ function supabaseDb(config: SendConfig) {
     markCampaignSending: (campaignId: string) => patch(`campaigns?id=eq.${campaignId}`, { status: "sending", updated_at: new Date().toISOString() }),
     markLeadQueued: (id: string) => patch(`campaign_leads?id=eq.${id}`, { status: "queued", updated_at: new Date().toISOString() }),
     markLeadSent: (id: string) => patch(`campaign_leads?id=eq.${id}`, { status: "sent", updated_at: new Date().toISOString() }),
-    insertMessage: (row: unknown) => post<Record<string, any>>("messages", row),
+    insertMessage: (row: unknown) => post<Record<string, unknown>>("messages", row),
     insertMessageEvent: (row: unknown) =>
       post("message_events", row, "return=minimal").catch((error) => {
         if (!String(error.message).includes("409")) throw error;

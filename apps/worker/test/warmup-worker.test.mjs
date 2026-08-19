@@ -88,6 +88,40 @@ test("does not schedule beyond today's queued warmup target", async () => {
   assert.equal(inserted.length, 0);
 });
 
+test("balances scheduled warmup messages across seed accounts", async () => {
+  const inserted = [];
+  const mailboxes = ["mb1", "mb2", "mb3"].map((id) => ({
+    id,
+    workspace_id: "ws1",
+    warmup_daily_limit: 25,
+    warmup_daily_rampup: 5,
+    warmup_randomize_daily_count: false,
+    warmup_started_at: "2026-08-14T00:00:00.000Z",
+    warmup_count_today: 0,
+  }));
+
+  await runWarmupCycle({
+    now: new Date("2026-08-14T10:00:00.000Z"),
+    db: {
+      getWarmupReadyMailboxes: async () => mailboxes,
+      getWarmupSeeds: async () => [
+        { id: "seed1", workspace_id: "ws1", email_address: "a@gmail.com", warmup_count_24h: 0 },
+        { id: "seed2", workspace_id: "ws1", email_address: "b@gmail.com", warmup_count_24h: 0 },
+      ],
+      insertWarmupMessage: async (row) => inserted.push(row),
+      claimWarmupMessages: async () => [],
+      getSentWarmupMessagesNeedingCheck: async () => [],
+    },
+    sendMail: async () => {},
+    gmail: {},
+  });
+
+  assert.deepEqual(
+    inserted.map((row) => row.seed_account_id),
+    ["seed1", "seed2", "seed1"],
+  );
+});
+
 test("schedules inside the mailbox timezone window", async () => {
   const random = Math.random;
   Math.random = () => 0;
@@ -123,6 +157,37 @@ test("schedules inside the mailbox timezone window", async () => {
   }
 
   assert.equal(inserted[0].scheduled_for, "2026-08-14T05:00:00.000Z");
+});
+
+test("schedules at the next window when the mailbox window already closed", async () => {
+  const inserted = [];
+  await runWarmupCycle({
+    now: new Date("2026-08-14T12:30:00.000Z"),
+    db: {
+      getWarmupReadyMailboxes: async () => [
+        {
+          id: "mb1",
+          workspace_id: "ws1",
+          warmup_daily_limit: 25,
+          warmup_daily_rampup: 5,
+          warmup_randomize_daily_count: false,
+          warmup_started_at: "2026-08-14T00:00:00.000Z",
+          warmup_count_today: 0,
+          timezone: "Asia/Kolkata",
+          sending_window_start: "09:00",
+          sending_window_end: "17:00",
+        },
+      ],
+      getWarmupSeeds: async () => [{ id: "seed1", workspace_id: "ws1", email_address: "seed@gmail.com" }],
+      insertWarmupMessage: async (row) => inserted.push(row),
+      claimWarmupMessages: async () => [],
+      getSentWarmupMessagesNeedingCheck: async () => [],
+    },
+    sendMail: async () => {},
+    gmail: {},
+  });
+
+  assert.equal(inserted[0].scheduled_for, "2026-08-15T03:30:00.000Z");
 });
 
 test("sends claimed warmup message through the sender mailbox", async () => {
