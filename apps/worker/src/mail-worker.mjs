@@ -167,6 +167,14 @@ function supabaseDb(config, fetchImpl) {
         available_today: byId.get(mailbox.id)?.available_today ?? 0,
       }));
     },
+    getLastSendAtByMailbox: async (campaignId, mailboxIds) => {
+      if (mailboxIds.length === 0) return {};
+      const ids = mailboxIds.map(encodeURIComponent).join(",");
+      const rows = await get(
+        `messages?campaign_id=eq.${encodeURIComponent(campaignId)}&mailbox_id=in.(${ids})&direction=eq.outbound&sent_at=not.is.null&select=mailbox_id,sent_at&order=sent_at.desc`,
+      );
+      return Object.fromEntries(rows.filter((row, index) => rows.findIndex((item) => item.mailbox_id === row.mailbox_id) === index).map((row) => [row.mailbox_id, row.sent_at]));
+    },
     markCampaignSending: (campaignId) => patch(`campaigns?id=eq.${campaignId}`, { status: "sending", updated_at: new Date().toISOString() }),
     markLeadQueued: (id) => patch(`campaign_leads?id=eq.${id}`, { status: "queued", updated_at: new Date().toISOString() }),
     markLeadSent: (id) => patch(`campaign_leads?id=eq.${id}`, { status: "sent", updated_at: new Date().toISOString() }),

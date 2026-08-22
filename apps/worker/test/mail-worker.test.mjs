@@ -77,6 +77,51 @@ test("sends due campaign leads through selected mailbox and records source rows"
   assert.equal(calls.some((call) => call[0] === "usage"), true);
 });
 
+test("skips campaign sending when every mailbox is inside the per-mailbox delay", async () => {
+  const sent = [];
+  const db = intervalCampaignDb({
+    mailboxes: [{ id: "mailbox-1", available_today: 1 }],
+    lastSentByMailbox: { "mailbox-1": "2026-08-13T06:59:00.000Z" },
+  });
+
+  const result = await sendDueCampaigns({
+    db,
+    now: new Date("2026-08-13T07:00:00.000Z"),
+    decryptSecret: () => "app-password",
+    sendMail: async (payload) => {
+      sent.push(payload);
+      return { messageId: "<zoho-1@example.com>" };
+    },
+  });
+
+  assert.deepEqual(result, { campaigns: 1, sent: 0, skipped: 1, failed: 0 });
+  assert.deepEqual(sent, []);
+});
+
+test("uses another campaign mailbox when the first mailbox is cooling down", async () => {
+  const sent = [];
+  const db = intervalCampaignDb({
+    mailboxes: [
+      { id: "mailbox-1", email_address: "first@example.com", available_today: 1 },
+      { id: "mailbox-2", email_address: "second@example.com", available_today: 1 },
+    ],
+    lastSentByMailbox: { "mailbox-1": "2026-08-13T06:59:00.000Z" },
+  });
+
+  const result = await sendDueCampaigns({
+    db,
+    now: new Date("2026-08-13T07:00:00.000Z"),
+    decryptSecret: () => "app-password",
+    sendMail: async (payload) => {
+      sent.push(payload);
+      return { messageId: "<zoho-1@example.com>" };
+    },
+  });
+
+  assert.equal(result.sent, 1);
+  assert.equal(sent[0].user, "second@example.com");
+});
+
 test("adds a signed open tracking pixel to outbound campaign html", async () => {
   const sent = [];
   const db = {
@@ -256,3 +301,41 @@ test("supports sync-only worker runs without campaign sending", () => {
   assert.deepEqual(selectedMailJobs(["--send-only"]), { send: true, sync: false });
   assert.deepEqual(selectedMailJobs([]), { send: true, sync: true });
 });
+
+function intervalCampaignDb({ mailboxes, lastSentByMailbox }) {
+  return {
+    getDueCampaigns: async () => [
+      {
+        id: "campaign-1",
+        workspace_id: "workspace-1",
+        status: "scheduled",
+        timezone: "UTC",
+        start_date: "2026-08-13",
+        sending_days: [],
+        sending_window_start: "00:00",
+        sending_window_end: "23:59",
+        max_sends_per_day: 10,
+        per_mailbox_delay_seconds: 120,
+      },
+    ],
+    getFirstSequenceStep: async () => ({ subject: "Hi", body: "Body" }),
+    getSendableLeads: async () => [{ campaign_lead_id: "campaign-lead-1", lead_id: "lead-1", name: "Corey", email: "corey@example.com" }],
+    getUsableMailboxes: async () =>
+      mailboxes.map((mailbox) => ({
+        workspace_id: "workspace-1",
+        email_address: "sender@example.com",
+        display_name: "Sender",
+        encrypted_app_password: {},
+        ...mailbox,
+      })),
+    getLastSendAtByMailbox: async () => lastSentByMailbox,
+    markCampaignSending: async () => {},
+    markLeadQueued: async () => {},
+    insertMessage: async (row) => ({ id: "message-1", ...row }),
+    insertMessageEvent: async () => {},
+    markMessageAccepted: async () => {},
+    markLeadSent: async () => {},
+    consumeMailboxSend: async () => {},
+    completeCampaignIfDone: async () => {},
+  };
+}

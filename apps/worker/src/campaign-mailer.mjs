@@ -43,6 +43,8 @@ export async function sendDueCampaigns({ db, sendMail, decryptSecret, tracking, 
       db.getUsableMailboxes(campaign.id),
       db.getSendableLeads(campaign.id, limit),
     ]);
+    const lastSentByMailbox = new Map(Object.entries(await db.getLastSendAtByMailbox?.(campaign.id, mailboxes.map((mailbox) => mailbox.id)) ?? {}));
+    const delayMs = Math.max(0, Number(campaign.per_mailbox_delay_seconds ?? 0) * 1000);
     const capacity = mailboxes.reduce((sum, mailbox) => sum + Number(mailbox.available_today ?? 0), 0);
     const max = Math.min(Number(campaign.max_sends_per_day ?? limit), capacity, leads.length, limit);
     if (max <= 0) continue;
@@ -50,18 +52,28 @@ export async function sendDueCampaigns({ db, sendMail, decryptSecret, tracking, 
     await db.markCampaignSending(campaign.id);
 
     for (const lead of leads.slice(0, max)) {
-      const mailbox = mailboxes.find((item) => Number(item.available_today ?? 0) > 0);
-      if (!mailbox) break;
+      const mailbox = mailboxes.find((item) => Number(item.available_today ?? 0) > 0 && isMailboxReady(item, lastSentByMailbox, delayMs, now));
+      if (!mailbox) {
+        summary.skipped++;
+        break;
+      }
 
       mailbox.available_today = Number(mailbox.available_today) - 1;
       const sent = await sendCampaignLead({ db, sendMail, decryptSecret, campaign, step, lead, mailbox, now, tracking });
       summary[sent ? "sent" : "failed"]++;
+      if (sent) lastSentByMailbox.set(mailbox.id, now.toISOString());
     }
 
     await db.completeCampaignIfDone(campaign.id);
   }
 
   return summary;
+}
+
+function isMailboxReady(mailbox, lastSentByMailbox, delayMs, now) {
+  if (delayMs <= 0) return true;
+  const lastSentAt = lastSentByMailbox.get(mailbox.id);
+  return !lastSentAt || now - new Date(lastSentAt) >= delayMs;
 }
 
 async function sendCampaignLead({ db, sendMail, decryptSecret, campaign, step, lead, mailbox, now, tracking }) {
