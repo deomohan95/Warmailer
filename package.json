@@ -22,6 +22,9 @@
     "typescript": "5.9.2",
     "typescript-eslint": "8.39.0"
   },
+  "overrides": {
+    "deepmerge-ts": "8.0.2"
+  },
   "engines": {
     "node": ">=22"
   }

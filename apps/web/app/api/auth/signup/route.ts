@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireSupabaseConfig } from "@/lib/backend-data";
+import { publicRequestUrl } from "@/lib/request-url";
 
 type CreatedUser = {
   id: string;
@@ -13,13 +14,15 @@ type Workspace = {
 export async function POST(request: NextRequest) {
   const form = await request.formData();
   const name = String(form.get("name") ?? "").trim();
-  const email = String(form.get("email") ?? "").trim().toLowerCase();
+  const email = String(form.get("email") ?? "")
+    .trim()
+    .toLowerCase();
   const phone = String(form.get("phone") ?? "").trim();
   const company = String(form.get("company") ?? "").trim();
   const password = String(form.get("password") ?? "");
 
   if (!name || !email || !company || password.length < 8) {
-    return NextResponse.redirect(new URL("/signup?error=1", request.url));
+    return NextResponse.redirect(publicRequestUrl("/signup?error=1", request));
   }
 
   const user = await supabaseAuthAdmin<CreatedUser>("/auth/v1/admin/users", {
@@ -36,7 +39,7 @@ export async function POST(request: NextRequest) {
     role: "owner",
   });
 
-  return NextResponse.redirect(new URL("/login?created=1", request.url));
+  return NextResponse.redirect(publicRequestUrl("/login?created=1", request));
 }
 
 async function supabaseAuthAdmin<T>(path: string, body: unknown): Promise<T> {

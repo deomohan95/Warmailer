@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { ACCESS_COOKIE, REFRESH_COOKIE, loginIdentifierToEmail } from "@/lib/auth";
 import { requireSupabaseConfig } from "@/lib/backend-data";
+import { isPublicHttpsRequest, publicRequestUrl } from "@/lib/request-url";
 
 export async function POST(request: NextRequest) {
   const form = await request.formData();
@@ -18,11 +19,11 @@ export async function POST(request: NextRequest) {
     body: JSON.stringify({ email, password }),
   });
 
-  if (!auth.ok) return NextResponse.redirect(new URL("/login?error=1", request.url));
+  if (!auth.ok) return NextResponse.redirect(publicRequestUrl("/login?error=1", request));
 
   const session = (await auth.json()) as { access_token: string; refresh_token: string; expires_in: number };
-  const response = NextResponse.redirect(new URL("/", request.url));
-  const secure = request.nextUrl.protocol === "https:";
+  const response = NextResponse.redirect(publicRequestUrl("/", request));
+  const secure = isPublicHttpsRequest(request);
   response.cookies.set(ACCESS_COOKIE, session.access_token, {
     httpOnly: true,
     sameSite: "lax",
