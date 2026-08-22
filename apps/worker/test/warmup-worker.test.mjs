@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createComposioGmail } from "../src/composio-gmail.mjs";
-import { runWarmupCycle } from "../src/warmup-worker.mjs";
+import { runWarmupCycle, warmupTargetForDay } from "../src/warmup-worker.mjs";
 
 test("uses normalized composio api key and executes gmail search by token", async () => {
   const calls = [];
@@ -86,6 +86,28 @@ test("does not schedule beyond today's queued warmup target", async () => {
 
   assert.equal(result.scheduled, 0);
   assert.equal(inserted.length, 0);
+});
+
+test("uses one randomized warmup target for the mailbox day", () => {
+  const random = Math.random;
+  const mailbox = {
+    id: "mb1",
+    warmup_daily_limit: 25,
+    warmup_daily_rampup: 5,
+    warmup_randomize_daily_count: true,
+    warmup_started_at: "2026-08-14T00:00:00.000Z",
+  };
+  try {
+    Math.random = () => 0;
+    const first = warmupTargetForDay(mailbox, new Date("2026-08-16T10:00:00.000Z"));
+    Math.random = () => 0.99;
+    const second = warmupTargetForDay(mailbox, new Date("2026-08-16T20:00:00.000Z"));
+
+    assert.equal(first, second);
+    assert.ok(first >= 11 && first <= 15);
+  } finally {
+    Math.random = random;
+  }
 });
 
 test("balances scheduled warmup messages across seed accounts", async () => {

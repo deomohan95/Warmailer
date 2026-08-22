@@ -18,7 +18,7 @@ type WarmupStatsRow = {
   spam_7d: number;
   saved_from_spam_7d: number;
   replied_7d: number;
-  reputation: number;
+  reputation: number | null;
 };
 
 type WarmupSeedRow = {

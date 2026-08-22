@@ -57,6 +57,15 @@ test("warmup reputation is derived from events and messages", () => {
   assert.match(migration, /reputation/i);
 });
 
+test("warmup reputation is unknown until placement has been checked", () => {
+  assert.match(migrations, /landed_folder in \('inbox', 'spam'\)[\s\S]*?then null/i);
+});
+
+test("warmup stats view uses the same deterministic daily random target", () => {
+  assert.match(migrations, /warmup_randomize_daily_count/i);
+  assert.match(migrations, /md5\(m\.id::text \|\| ':' \|\| \(\(now\(\) at time zone m\.timezone\)::date\)::text\)/i);
+});
+
 test("browser roles cannot write worker-owned warmup message rows", () => {
   assert.match(migration, /grant select on public\.warmup_messages to authenticated;/i);
   assert.doesNotMatch(migration, /grant select, insert, update on public\.warmup_messages to authenticated;/i);

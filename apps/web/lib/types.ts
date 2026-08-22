@@ -122,7 +122,7 @@ export type WarmupMailboxStats = EntityLineage & {
   spam7d: number;
   savedFromSpam7d: number;
   replied7d: number;
-  reputation: number;
+  reputation: number | null;
 };
 
 export type WarmupSeedAccount = EntityLineage & {

@@ -325,6 +325,7 @@ describe("warmup wiring", () => {
     expect(component).toContain("warmupDailyRampup");
     expect(component).toContain("warmupRandomizeDailyCount");
     expect(component).toContain("warmupReplyRatePercent");
+    expect(component).not.toContain("stat?.reputation ?? 100");
   });
 
   it("keeps warmup seed management behind the app owner admin gate", async () => {

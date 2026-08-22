@@ -296,7 +296,7 @@ function WarmupPanel({
                             }
                           />
                         </td>
-                        <td className="num">{stat?.reputation ?? 100}%</td>
+                        <td className="num">{stat?.reputation == null ? "-" : `${stat.reputation}%`}</td>
                         <td>{warmupIssue(mailbox)}</td>
                         <td>
                           <div className="row" style={{ gap: "var(--s-2)", flexWrap: "wrap" }}>

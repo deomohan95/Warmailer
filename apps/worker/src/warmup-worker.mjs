@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -27,13 +27,13 @@ export function selectedWarmupJobs(args = []) {
 
 export function warmupTargetForDay(mailbox, now = new Date()) {
   const startedAt = mailbox.warmup_started_at ? new Date(mailbox.warmup_started_at) : now;
-  const day = Math.max(1, Math.floor((now - startedAt) / 86400000) + 1);
+  const day = warmupDayNumber(startedAt, now, mailbox.timezone);
   const max = Number(mailbox.warmup_daily_limit ?? 25);
   const ramp = Number(mailbox.warmup_daily_rampup ?? 5);
   const target = Math.min(max, day * ramp);
   if (!mailbox.warmup_randomize_daily_count) return target;
   const floor = Math.max(1, target - ramp + 1);
-  return floor + Math.floor(Math.random() * (target - floor + 1));
+  return floor + (stableWarmupHash(mailbox, now) % (target - floor + 1));
 }
 
 export async function runWarmupCycle({
@@ -309,6 +309,25 @@ function localDayBounds(now, timeZone = "UTC") {
     start: zonedTimeToUtc({ ...parts, hour: 0, minute: 0 }, timeZone),
     end: zonedTimeToUtc({ ...parts, day: parts.day + 1, hour: 0, minute: 0 }, timeZone),
   };
+}
+
+function warmupDayNumber(startedAt, now, timeZone = "UTC") {
+  const start = zonedParts(startedAt, timeZone);
+  const today = zonedParts(now, timeZone);
+  return Math.max(
+    1,
+    Math.floor(
+      (Date.UTC(today.year, today.month - 1, today.day) - Date.UTC(start.year, start.month - 1, start.day)) / 86400000,
+    ) + 1,
+  );
+}
+
+function stableWarmupHash(mailbox, now) {
+  const parts = zonedParts(now, mailbox.timezone);
+  const month = String(parts.month).padStart(2, "0");
+  const day = String(parts.day).padStart(2, "0");
+  const key = `${mailbox.id ?? mailbox.email_address ?? ""}:${parts.year}-${month}-${day}`;
+  return createHash("md5").update(key).digest().readUInt32BE(0);
 }
 
 function zonedParts(date, timeZone = "UTC") {
