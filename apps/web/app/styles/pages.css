@@ -714,6 +714,86 @@
   overflow-wrap: anywhere;
 }
 
+.warmup-intro {
+  display: grid;
+  gap: 5px;
+  max-width: 780px;
+}
+
+.warmup-intro h2 {
+  font-size: 18px;
+}
+
+.warmup-intro p {
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.warmup-card-list {
+  display: grid;
+  gap: var(--s-4);
+}
+
+.warmup-card {
+  display: grid;
+  gap: var(--s-4);
+  padding: var(--s-4);
+}
+
+.warmup-card-head,
+.warmup-card-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+}
+
+.warmup-card-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--surface);
+}
+
+.warmup-card-metrics dt {
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+
+.warmup-card-metrics dd {
+  margin-top: 3px;
+  font-size: 13px;
+}
+
+.warmup-enable {
+  width: max-content;
+}
+
+.warmup-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: var(--s-4);
+}
+
+.warmup-range-field {
+  grid-column: span 2;
+}
+
+.warmup-range-field input[type="range"] {
+  width: 100%;
+}
+
+.warmup-range-label {
+  display: flex;
+  justify-content: space-between;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 .limit-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -749,6 +829,17 @@
 
 .check-row input {
   flex: none;
+}
+
+@media (max-width: 760px) {
+  .warmup-card-metrics,
+  .warmup-settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .warmup-range-field {
+    grid-column: auto;
+  }
 }
 
 /* ---------- Settings ---------- */

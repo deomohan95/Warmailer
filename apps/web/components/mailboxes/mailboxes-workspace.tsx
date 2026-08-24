@@ -18,7 +18,10 @@ type WarmupFormState = {
   warmupDailyLimit: number;
   warmupDailyRampup: number;
   warmupRandomizeDailyCount: boolean;
+  warmupRandomMinPercent: number;
   warmupReplyRatePercent: number;
+  warmupInboundOriginalPercent: number;
+  warmupInboundReplyRatePercent: number;
 };
 
 export function MailboxesWorkspace({
@@ -97,7 +100,10 @@ function defaultWarmupState(stat?: WarmupMailboxStats): WarmupFormState {
     warmupDailyLimit: stat?.warmupDailyLimit ?? 25,
     warmupDailyRampup: stat?.warmupDailyRampup ?? 5,
     warmupRandomizeDailyCount: stat?.warmupRandomizeDailyCount ?? true,
+    warmupRandomMinPercent: stat?.warmupRandomMinPercent ?? 10,
     warmupReplyRatePercent: stat?.warmupReplyRatePercent ?? 20,
+    warmupInboundOriginalPercent: stat?.warmupInboundOriginalPercent ?? 20,
+    warmupInboundReplyRatePercent: stat?.warmupInboundReplyRatePercent ?? 52,
   };
 }
 
@@ -123,11 +129,12 @@ function WarmupPanel({
   const totals = warmupStats.reduce(
     (acc, stat) => ({
       sent7d: acc.sent7d + stat.sent7d,
+      received7d: acc.received7d + stat.received7d,
       inbox7d: acc.inbox7d + stat.inbox7d,
       savedFromSpam7d: acc.savedFromSpam7d + stat.savedFromSpam7d,
       replied7d: acc.replied7d + stat.replied7d,
     }),
-    { sent7d: 0, inbox7d: 0, savedFromSpam7d: 0, replied7d: 0 },
+    { sent7d: 0, received7d: 0, inbox7d: 0, savedFromSpam7d: 0, replied7d: 0 },
   );
   const [forms, setForms] = useState<Record<string, WarmupFormState>>(() =>
     Object.fromEntries(mailboxes.map((mailbox) => [mailbox.mailboxId, defaultWarmupState(statsByMailbox.get(mailbox.mailboxId))])),
@@ -188,8 +195,8 @@ function WarmupPanel({
             <dd className="num">{totals.savedFromSpam7d.toLocaleString()}</dd>
           </div>
           <div className="stat">
-            <dt>Emails received/replied</dt>
-            <dd className="num">{totals.replied7d.toLocaleString()}</dd>
+            <dt>Fresh emails received</dt>
+            <dd className="num">{totals.received7d.toLocaleString()}</dd>
           </div>
         </div>
       </dl>
@@ -205,131 +212,206 @@ function WarmupPanel({
         </Notice>
       ) : null}
 
-      <Card>
-        <CardHead title="Mailbox warmup" display />
-        <div className="card-body card-body-flush">
-          {mailboxes.length === 0 ? (
-            <EmptyState small icon={<IconMailbox />} title="No mailbox connected yet" />
-          ) : (
-            <div className="table-wrap">
-              <table className="table warmup-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Mailbox</th>
-                    <th scope="col">Today</th>
-                    <th scope="col">Limit</th>
-                    <th scope="col">Ramp</th>
-                    <th scope="col">Randomized</th>
-                    <th scope="col">Reply rate</th>
-                    <th scope="col">Reputation</th>
-                    <th scope="col">Issue</th>
-                    <th scope="col">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {mailboxes.map((mailbox) => {
-                    const stat = statsByMailbox.get(mailbox.mailboxId);
-                    const state = forms[mailbox.mailboxId] ?? defaultWarmupState(stat);
-                    return (
-                      <tr key={mailbox.mailboxId}>
-                        <td>
-                          <div className="cell-strong">{mailbox.emailAddress}</div>
-                          <div className="cell-sub">{state.warmupEnabled ? "Warmup enabled" : "Warmup disabled"}</div>
-                        </td>
-                        <td className="num">
-                          {(stat?.sentToday ?? 0).toLocaleString()} /{" "}
-                          {(stat?.warmupTargetToday ?? Math.min(state.warmupDailyLimit, state.warmupDailyRampup)).toLocaleString()}
-                        </td>
-                        <td>
-                          <input
-                            className="input num warmup-number"
-                            type="number"
-                            min={1}
-                            max={100}
-                            value={state.warmupDailyLimit}
-                            onChange={(event) =>
-                              updateMailbox(mailbox.mailboxId, {
-                                warmupDailyLimit: clamp(Number(event.target.value) || 1, 1, 100),
-                              })
-                            }
-                          />
-                        </td>
-                        <td>
-                          <input
-                            className="input num warmup-number"
-                            type="number"
-                            min={1}
-                            max={100}
-                            value={state.warmupDailyRampup}
-                            onChange={(event) =>
-                              updateMailbox(mailbox.mailboxId, {
-                                warmupDailyRampup: clamp(Number(event.target.value) || 1, 1, 100),
-                              })
-                            }
-                          />
-                        </td>
-                        <td>
-                          <label className="check-row">
-                            <input
-                              type="checkbox"
-                              checked={state.warmupRandomizeDailyCount}
-                              onChange={(event) =>
-                                updateMailbox(mailbox.mailboxId, {
-                                  warmupRandomizeDailyCount: event.target.checked,
-                                })
-                              }
-                            />
-                            Randomize
-                          </label>
-                        </td>
-                        <td>
-                          <input
-                            className="input num warmup-number"
-                            type="number"
-                            min={0}
-                            max={100}
-                            value={state.warmupReplyRatePercent}
-                            onChange={(event) =>
-                              updateMailbox(mailbox.mailboxId, {
-                                warmupReplyRatePercent: clamp(Number(event.target.value) || 0, 0, 100),
-                              })
-                            }
-                          />
-                        </td>
-                        <td className="num">{stat?.reputation == null ? "-" : `${stat.reputation}%`}</td>
-                        <td>{warmupIssue(mailbox)}</td>
-                        <td>
-                          <div className="row" style={{ gap: "var(--s-2)", flexWrap: "wrap" }}>
-                            <label className="check-row">
-                              <input
-                                type="checkbox"
-                                checked={state.warmupEnabled}
-                                onChange={(event) =>
-                                  updateMailbox(mailbox.mailboxId, { warmupEnabled: event.target.checked })
-                                }
-                              />
-                              Enabled
-                            </label>
-                            <button
-                              type="button"
-                              className="btn btn-secondary"
-                              disabled={savingMailboxId === mailbox.mailboxId}
-                              onClick={() => saveWarmupSettings(mailbox.mailboxId)}
-                            >
-                              {savingMailboxId === mailbox.mailboxId ? "Saving..." : "Save"}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </Card>
+      <div className="warmup-intro">
+        <h2>Mailbox warmup</h2>
+        <p>
+          Warmup sends low-volume real emails in both directions, checks where they land, moves spam to inbox,
+          marks messages important, and replies at the rates set below.
+        </p>
+      </div>
 
+      {mailboxes.length === 0 ? (
+        <Card>
+          <div className="card-body card-body-flush">
+            <EmptyState small icon={<IconMailbox />} title="No mailbox connected yet" />
+          </div>
+        </Card>
+      ) : (
+        <div className="warmup-card-list">
+          {mailboxes.map((mailbox) => {
+            const stat = statsByMailbox.get(mailbox.mailboxId);
+            const state = forms[mailbox.mailboxId] ?? defaultWarmupState(stat);
+            const targetToday = stat?.warmupTargetToday ?? Math.min(state.warmupDailyLimit, state.warmupDailyRampup);
+            const rawTargetToday = stat?.warmupRawTargetToday ?? Math.min(state.warmupDailyLimit, state.warmupDailyRampup);
+            const randomFloorToday = clamp(Math.round((rawTargetToday * state.warmupRandomMinPercent) / 100), 1, rawTargetToday);
+            return (
+              <Card key={mailbox.mailboxId} className="warmup-card">
+                <div className="warmup-card-head">
+                  <div style={{ minWidth: 0 }}>
+                    <div className="mailbox-address">{mailbox.emailAddress}</div>
+                    <div className="cell-sub">{state.warmupEnabled ? "Warmup enabled" : "Warmup disabled"}</div>
+                  </div>
+                  <div className="spacer" />
+                  <StatusPill {...MAILBOX_STATUS[mailbox.status]} />
+                </div>
+
+                <dl className="warmup-card-metrics">
+                  <div>
+                    <dt>Today</dt>
+                    <dd className="num">
+                      {(stat?.sentToday ?? 0).toLocaleString()} / {targetToday.toLocaleString()}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Reputation</dt>
+                    <dd className="num">{stat?.reputation == null ? "-" : `${stat.reputation}%`}</dd>
+                  </div>
+                  <div>
+                    <dt>Issue</dt>
+                    <dd>{warmupIssue(mailbox)}</dd>
+                  </div>
+                </dl>
+
+                <label className="check-row warmup-enable">
+                  <input
+                    type="checkbox"
+                    checked={state.warmupEnabled}
+                    onChange={(event) => updateMailbox(mailbox.mailboxId, { warmupEnabled: event.target.checked })}
+                  />
+                  Email warmup enabled
+                </label>
+
+                <div className="warmup-settings-grid">
+                  <div className="field">
+                    <label htmlFor={`${mailbox.mailboxId}-warmup-limit`}>Daily limit</label>
+                    <input
+                      id={`${mailbox.mailboxId}-warmup-limit`}
+                      className="input num"
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={state.warmupDailyLimit}
+                      onChange={(event) => {
+                        const nextLimit = clamp(Number(event.target.value) || 1, 1, 100);
+                        updateMailbox(mailbox.mailboxId, { warmupDailyLimit: nextLimit });
+                      }}
+                    />
+                    <span className="field-hint">Maximum warmup emails this mailbox can send per day.</span>
+                  </div>
+
+                  <div className="field">
+                    <label htmlFor={`${mailbox.mailboxId}-warmup-ramp`}>Daily rampup</label>
+                    <input
+                      id={`${mailbox.mailboxId}-warmup-ramp`}
+                      className="input num"
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={state.warmupDailyRampup}
+                      onChange={(event) =>
+                        updateMailbox(mailbox.mailboxId, {
+                          warmupDailyRampup: clamp(Number(event.target.value) || 1, 1, 100),
+                        })
+                      }
+                    />
+                    <span className="field-hint">How much the target grows each day until it reaches the limit.</span>
+                  </div>
+
+                  <div className="field warmup-range-field">
+                    <label className="check-row" htmlFor={`${mailbox.mailboxId}-warmup-random-min`}>
+                      <input
+                        type="checkbox"
+                        checked={state.warmupRandomizeDailyCount}
+                        onChange={(event) =>
+                          updateMailbox(mailbox.mailboxId, {
+                            warmupRandomizeDailyCount: event.target.checked,
+                          })
+                        }
+                      />
+                      Randomize daily volume
+                    </label>
+                    <input
+                      id={`${mailbox.mailboxId}-warmup-random-min`}
+                      type="range"
+                      min={1}
+                      max={100}
+                      value={state.warmupRandomMinPercent}
+                      disabled={!state.warmupRandomizeDailyCount}
+                      onChange={(event) =>
+                        updateMailbox(mailbox.mailboxId, {
+                          warmupRandomMinPercent: clamp(Number(event.target.value) || 1, 1, 100),
+                        })
+                      }
+                    />
+                    <div className="warmup-range-label">
+                      <span>{state.warmupRandomMinPercent}%</span>
+                      <span>100%</span>
+                    </div>
+                    <span className="field-hint">
+                      Approx range today: {randomFloorToday}-{rawTargetToday}/day. It scales when the daily limit changes.
+                    </span>
+                  </div>
+
+                  <div className="field">
+                    <label htmlFor={`${mailbox.mailboxId}-warmup-reply`}>Reply rate (%)</label>
+                    <input
+                      id={`${mailbox.mailboxId}-warmup-reply`}
+                      className="input num"
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={state.warmupReplyRatePercent}
+                      onChange={(event) =>
+                        updateMailbox(mailbox.mailboxId, {
+                          warmupReplyRatePercent: clamp(Number(event.target.value) || 0, 0, 100),
+                        })
+                      }
+                    />
+                    <span className="field-hint">Gmail seed replies to Zoho-sent warmup emails at this rate.</span>
+                  </div>
+
+                  <div className="field">
+                    <label htmlFor={`${mailbox.mailboxId}-warmup-inbound`}>Fresh inbound (%)</label>
+                    <input
+                      id={`${mailbox.mailboxId}-warmup-inbound`}
+                      className="input num"
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={state.warmupInboundOriginalPercent}
+                      onChange={(event) =>
+                        updateMailbox(mailbox.mailboxId, {
+                          warmupInboundOriginalPercent: clamp(Number(event.target.value) || 0, 0, 100),
+                        })
+                      }
+                    />
+                    <span className="field-hint">Share of fresh originals sent from Gmail seeds into this mailbox.</span>
+                  </div>
+
+                  <div className="field">
+                    <label htmlFor={`${mailbox.mailboxId}-warmup-inbound-reply`}>Inbound reply (%)</label>
+                    <input
+                      id={`${mailbox.mailboxId}-warmup-inbound-reply`}
+                      className="input num"
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={state.warmupInboundReplyRatePercent}
+                      onChange={(event) =>
+                        updateMailbox(mailbox.mailboxId, {
+                          warmupInboundReplyRatePercent: clamp(Number(event.target.value) || 0, 0, 100),
+                        })
+                      }
+                    />
+                    <span className="field-hint">This Zoho mailbox replies to fresh Gmail-seed emails at this rate.</span>
+                  </div>
+                </div>
+
+                <div className="warmup-card-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    disabled={savingMailboxId === mailbox.mailboxId}
+                    onClick={() => saveWarmupSettings(mailbox.mailboxId)}
+                  >
+                    {savingMailboxId === mailbox.mailboxId ? "Saving..." : "Save warmup settings"}
+                  </button>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

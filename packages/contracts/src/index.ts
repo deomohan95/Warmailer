@@ -166,7 +166,10 @@ export const WarmupMailboxUpdateInputSchema = z
     warmupDailyLimit: z.number().int().min(1).max(100),
     warmupDailyRampup: z.number().int().min(1).max(100),
     warmupRandomizeDailyCount: z.boolean(),
+    warmupRandomMinPercent: z.number().int().min(1).max(100),
     warmupReplyRatePercent: z.number().int().min(0).max(100),
+    warmupInboundOriginalPercent: z.number().int().min(0).max(100),
+    warmupInboundReplyRatePercent: z.number().int().min(0).max(100),
   })
   .strict();
 

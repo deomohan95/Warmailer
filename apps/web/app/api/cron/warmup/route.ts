@@ -27,5 +27,7 @@ export function loadWarmupConfig(env: Record<string, string | undefined> = proce
     composioApiKey: envValue("COMPOSIO_API_KEY", env) ?? envValue("Composio_api_key", env),
     smtpHost: envValue("ZOHO_SMTP_HOST", env) ?? "smtp.zoho.com",
     smtpPort: Number(envValue("ZOHO_SMTP_PORT", env) ?? 465),
+    imapHost: envValue("ZOHO_IMAP_HOST", env) ?? "imap.zoho.com",
+    imapPort: Number(envValue("ZOHO_IMAP_PORT", env) ?? 993),
   };
 }

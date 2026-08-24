@@ -34,7 +34,10 @@ export async function PATCH(request: Request) {
       warmup_daily_limit: input.warmupDailyLimit,
       warmup_daily_rampup: input.warmupDailyRampup,
       warmup_randomize_daily_count: input.warmupRandomizeDailyCount,
+      warmup_random_min_percent: input.warmupRandomMinPercent,
       warmup_reply_rate_percent: input.warmupReplyRatePercent,
+      warmup_inbound_original_percent: input.warmupInboundOriginalPercent,
+      warmup_inbound_reply_rate_percent: input.warmupInboundReplyRatePercent,
       status: nextStatus,
       updated_at: now,
     };
@@ -52,7 +55,10 @@ export async function PATCH(request: Request) {
         warmupDailyLimit: input.warmupDailyLimit,
         warmupDailyRampup: input.warmupDailyRampup,
         warmupRandomizeDailyCount: input.warmupRandomizeDailyCount,
+        warmupRandomMinPercent: input.warmupRandomMinPercent,
         warmupReplyRatePercent: input.warmupReplyRatePercent,
+        warmupInboundOriginalPercent: input.warmupInboundOriginalPercent,
+        warmupInboundReplyRatePercent: input.warmupInboundReplyRatePercent,
       },
       created_at: now,
     });

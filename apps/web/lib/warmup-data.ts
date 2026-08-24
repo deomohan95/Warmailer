@@ -9,11 +9,16 @@ type WarmupStatsRow = {
   warmup_daily_limit: number;
   warmup_daily_rampup: number;
   warmup_randomize_daily_count: boolean;
+  warmup_random_min_percent: number;
   warmup_reply_rate_percent: number;
+  warmup_inbound_original_percent: number;
+  warmup_inbound_reply_rate_percent: number;
   warmup_started_at: string | null;
   sent_today: number;
+  warmup_raw_target_today: number;
   warmup_target_today: number;
   sent_7d: number;
+  received_7d: number;
   inbox_7d: number;
   spam_7d: number;
   saved_from_spam_7d: number;
@@ -65,11 +70,16 @@ export function mapWarmupStatsRow(row: WarmupStatsRow): WarmupMailboxStats {
     warmupDailyLimit: row.warmup_daily_limit,
     warmupDailyRampup: row.warmup_daily_rampup,
     warmupRandomizeDailyCount: row.warmup_randomize_daily_count,
+    warmupRandomMinPercent: row.warmup_random_min_percent,
     warmupReplyRatePercent: row.warmup_reply_rate_percent,
+    warmupInboundOriginalPercent: row.warmup_inbound_original_percent,
+    warmupInboundReplyRatePercent: row.warmup_inbound_reply_rate_percent,
     warmupStartedAt: row.warmup_started_at ?? undefined,
     sentToday: row.sent_today,
+    warmupRawTargetToday: row.warmup_raw_target_today,
     warmupTargetToday: row.warmup_target_today,
     sent7d: row.sent_7d,
+    received7d: row.received_7d,
     inbox7d: row.inbox_7d,
     spam7d: row.spam_7d,
     savedFromSpam7d: row.saved_from_spam_7d,

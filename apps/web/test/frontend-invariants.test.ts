@@ -317,14 +317,28 @@ describe("warmup wiring", () => {
     expect(component).toContain("Saved from spam");
     expect(component).toContain("Landed in inbox");
     expect(component).toContain("Warmup emails sent");
+    expect(component).toContain("Fresh emails received");
+    expect(component).toContain("warmup-settings-grid");
+    expect(component).toContain('type="range"');
+    expect(component).toContain("Warmup sends low-volume real emails in both directions");
+    expect(component).not.toContain("warmup-table");
     expect(component).not.toContain("Gmail seed accounts");
     expect(component).not.toContain('fetch("/api/warmup/seeds"');
     expect(component).toContain("sentToday");
     expect(component).toContain("warmupTargetToday");
+    expect(component).toContain("received7d");
     expect(component).toContain("warmupDailyLimit");
     expect(component).toContain("warmupDailyRampup");
     expect(component).toContain("warmupRandomizeDailyCount");
+    expect(component).toContain("warmupRandomMinPercent");
+    expect(component).toContain('max={100}');
+    expect(component).toContain("100%");
+    expect(component).toContain("Approx range today");
     expect(component).toContain("warmupReplyRatePercent");
+    expect(component).toContain("warmupInboundOriginalPercent");
+    expect(component).toContain("warmupInboundReplyRatePercent");
+    expect(component).toContain("Fresh inbound (%)");
+    expect(component).toContain("Inbound reply (%)");
     expect(component).not.toContain("stat?.reputation ?? 100");
   });
 

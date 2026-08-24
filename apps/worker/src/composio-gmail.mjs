@@ -56,5 +56,12 @@ export function createComposioGmail({ apiKey, toolkitVersion = "20260721_00", fe
         arguments: { thread_id: threadId, body },
       });
     },
+    sendEmail({ userId, connectedAccountId, to, subject, body }) {
+      return execute("GMAIL_SEND_EMAIL", {
+        userId,
+        connectedAccountId,
+        arguments: { recipient_email: to, subject, body },
+      });
+    },
   };
 }

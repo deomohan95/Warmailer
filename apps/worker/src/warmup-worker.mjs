@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { ImapFlow } from "imapflow";
 import nodemailer from "nodemailer";
 
 import { createComposioGmail } from "./composio-gmail.mjs";
@@ -32,7 +33,8 @@ export function warmupTargetForDay(mailbox, now = new Date()) {
   const ramp = Number(mailbox.warmup_daily_rampup ?? 5);
   const target = Math.min(max, day * ramp);
   if (!mailbox.warmup_randomize_daily_count) return target;
-  const floor = Math.max(1, target - ramp + 1);
+  const minPercent = Math.max(1, Math.min(100, Number(mailbox.warmup_random_min_percent ?? 10)));
+  const floor = Math.max(1, Math.min(target, Math.round((target * minPercent) / 100)));
   return floor + (stableWarmupHash(mailbox, now) % (target - floor + 1));
 }
 
@@ -40,11 +42,13 @@ export async function runWarmupCycle({
   db,
   sendMail,
   gmail,
+  zoho,
   decryptSecret: decrypt = () => String(""),
   now = new Date(),
   limit = 25,
   jobs = { schedule: true, send: true, check: true },
   shouldReply = (sender) => Math.random() * 100 < Number(sender?.warmup_reply_rate_percent ?? 20),
+  shouldReplyToInbound = (sender) => Math.random() * 100 < Number(sender?.warmup_inbound_reply_rate_percent ?? 52),
   shouldMarkInboxImportant = () => Math.random() < 0.25,
 } = {}) {
   const summary = { scheduled: 0, sent: 0, checked: 0, savedFromSpam: 0, replied: 0, failed: 0 };
@@ -55,6 +59,8 @@ export async function runWarmupCycle({
     for (const mailbox of await db.getWarmupReadyMailboxes(now)) {
       const target = warmupTargetForDay(mailbox, now);
       if (Number(mailbox.warmup_count_today ?? mailbox.sent_today ?? 0) >= target) continue;
+      const inboundPercent = Math.max(0, Math.min(100, Number(mailbox.warmup_inbound_original_percent ?? 20)));
+      const direction = Number(mailbox.warmup_inbound_count_today ?? 0) < Math.floor((target * inboundPercent) / 100) ? "seed_to_mailbox" : "mailbox_to_seed";
       const seed = seeds
         .filter((row) => row.workspace_id === mailbox.workspace_id)
         .sort((a, b) => (seedLoads.get(a.id) ?? 0) - (seedLoads.get(b.id) ?? 0) || String(a.email_address).localeCompare(String(b.email_address)))[0];
@@ -65,6 +71,7 @@ export async function runWarmupCycle({
         workspace_id: mailbox.workspace_id,
         mailbox_id: mailbox.id,
         seed_account_id: seed.id,
+        direction,
         token,
         subject: template.subject,
         body_text: template.body.replace("{{token}}", token),
@@ -79,6 +86,20 @@ export async function runWarmupCycle({
     for (const warmup of await db.claimWarmupMessages(limit)) {
       try {
         const sender = warmup.sender;
+        if ((warmup.direction ?? "mailbox_to_seed") === "seed_to_mailbox") {
+          const result = await gmail.sendEmail({
+            userId: warmup.seed.composio_user_id,
+            connectedAccountId: warmup.seed.composio_connected_account_id,
+            to: sender.email_address,
+            subject: warmup.subject,
+            body: warmup.body_text,
+          });
+          const messageId = sentGmailMessageId(result);
+          await db.markWarmupSent(warmup.id, messageId);
+          await db.insertWarmupEvent(eventRow(warmup, "sent", "gmail_composio", messageId ? `gmail-send:${messageId}` : undefined));
+          summary.sent++;
+          continue;
+        }
         const result = await sendMail({
           host: sender.smtp_host,
           port: sender.smtp_port,
@@ -102,6 +123,44 @@ export async function runWarmupCycle({
   if (jobs.check) {
     for (const warmup of await db.getSentWarmupMessagesNeedingCheck(now)) {
       try {
+        if ((warmup.direction ?? "mailbox_to_seed") === "seed_to_mailbox") {
+          const found = await zoho.findWarmupMessage({ mailbox: warmup.sender, token: warmup.token });
+          if (!found) continue;
+          await db.markWarmupPlacement(warmup.id, found.folder, found.id, found.threadId);
+          await db.insertWarmupEvent(eventRow(warmup, found.folder === "spam" ? "landed_spam" : "landed_inbox", "zoho_mail", `zoho:${found.id}`));
+          summary.checked++;
+
+          const args = { mailbox: warmup.sender, messageId: found.id, folderPath: found.folderPath };
+          if (found.folder === "spam") {
+            await zoho.moveFromSpamToInbox(args);
+            await db.markWarmupRescued(warmup.id);
+            await db.insertWarmupEvent(eventRow(warmup, "saved_from_spam", "zoho_mail", `zoho-rescue:${found.id}`));
+            summary.savedFromSpam++;
+          }
+          if (found.folder === "spam" || shouldMarkInboxImportant(warmup.sender)) {
+            await zoho.markImportant(args);
+            await db.markWarmupImportant(warmup.id);
+            await db.insertWarmupEvent(eventRow(warmup, "marked_important", "zoho_mail", `zoho-important:${found.id}`));
+          }
+          if (!warmup.replied_at && shouldReplyToInbound(warmup.sender)) {
+            const result = await sendMail({
+              host: warmup.sender.smtp_host,
+              port: warmup.sender.smtp_port,
+              user: warmup.sender.email_address,
+              pass: decrypt(warmup.sender.encrypted_app_password, warmup.sender.id),
+              from: `${warmup.sender.display_name ?? warmup.sender.email_address} <${warmup.sender.email_address}>`,
+              to: warmup.seed.email_address,
+              subject: replySubject(found.subject ?? warmup.subject),
+              text: REPLIES[summary.replied % REPLIES.length],
+              inReplyTo: found.messageId,
+              references: found.references ?? found.messageId,
+            });
+            await db.markWarmupReplied(warmup.id);
+            await db.insertWarmupEvent(eventRow(warmup, "reply_sent", "zoho_mail", result.messageId ? `smtp:${result.messageId}` : undefined));
+            summary.replied++;
+          }
+          continue;
+        }
         const seed = warmup.seed;
         const found = await gmail.findWarmupMessage({
           userId: seed.composio_user_id,
@@ -150,6 +209,8 @@ export function loadWarmupConfig(env = process.env) {
     composioApiKey: value("COMPOSIO_API_KEY") ?? value("Composio_api_key"),
     smtpHost: value("ZOHO_SMTP_HOST") ?? "smtp.zoho.com",
     smtpPort: Number(value("ZOHO_SMTP_PORT") ?? 465),
+    imapHost: value("ZOHO_IMAP_HOST") ?? "imap.zoho.com",
+    imapPort: Number(value("ZOHO_IMAP_PORT") ?? 993),
   };
 
   if (!config.supabaseUrl) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL");
@@ -161,10 +222,12 @@ export function loadWarmupConfig(env = process.env) {
 
 export function buildWarmupDeps(config = loadWarmupConfig(), fetchImpl = fetch) {
   validateWarmupConfig(config);
+  const decrypt = (secret, mailboxId) => decryptSecret(secret, config.encryptionKey, mailboxId);
   return {
     db: supabaseDb(config, fetchImpl),
     gmail: createComposioGmail({ apiKey: config.composioApiKey, fetchImpl }),
-    decryptSecret: (secret, mailboxId) => decryptSecret(secret, config.encryptionKey, mailboxId),
+    zoho: createZohoWarmup(config, decrypt),
+    decryptSecret: decrypt,
     sendMail: (payload) => sendSmtp(payload, config),
   };
 }
@@ -179,6 +242,110 @@ export async function sendSmtp(payload, config = {}) {
       auth: { user: payload.user, pass: payload.pass },
     })
     .sendMail(payload);
+}
+
+function createZohoWarmup(config, decrypt) {
+  const credentials = (mailbox) => ({
+    ...mailbox,
+    host: mailbox.imap_host ?? config.imapHost,
+    port: mailbox.imap_port ?? config.imapPort,
+    pass: decrypt(mailbox.encrypted_app_password, mailbox.id),
+  });
+  return {
+    findWarmupMessage: ({ mailbox, token }) => findZohoWarmupMessage(credentials(mailbox), token),
+    moveFromSpamToInbox: ({ mailbox, messageId, folderPath }) => moveZohoMessage(credentials(mailbox), messageId, folderPath, "INBOX"),
+    markImportant: ({ mailbox, messageId, folderPath }) => markZohoImportant(credentials(mailbox), messageId, folderPath),
+  };
+}
+
+async function withZohoClient(mailbox, fn) {
+  const client = new ImapFlow({
+    host: mailbox.host,
+    port: Number(mailbox.port ?? 993),
+    secure: true,
+    logger: false,
+    auth: { user: mailbox.email_address, pass: mailbox.pass },
+  });
+  await client.connect();
+  try {
+    return await fn(client);
+  } finally {
+    await client.logout().catch(() => {});
+  }
+}
+
+async function findZohoWarmupMessage(mailbox, token) {
+  return withZohoClient(mailbox, async (client) => {
+    for (const folder of await zohoSearchFolders(client)) {
+      let lock;
+      try {
+        lock = await client.getMailboxLock(folder.path);
+        const ids = await client.search({ text: token }, { uid: true });
+        const id = Array.isArray(ids) ? ids.at(-1) : null;
+        if (id) {
+          const message = await client.fetchOne(String(id), { envelope: true, headers: ["message-id", "references"] }, { uid: true }).catch(() => null);
+          return {
+            id: String(id),
+            folder: folder.folder,
+            folderPath: folder.path,
+            subject: message?.envelope?.subject,
+            messageId: headerValue(message?.headers, "message-id"),
+            references: headerValue(message?.headers, "references"),
+          };
+        }
+      } catch {
+        // Some Zoho accounts expose spam as Junk/Bulk with different names.
+      } finally {
+        lock?.release();
+      }
+    }
+    return null;
+  });
+}
+
+function headerValue(headers, name) {
+  const value = headers?.get?.(name) ?? headers?.get?.(name.toLowerCase());
+  if (Array.isArray(value)) return value.join(" ");
+  return value ? String(value) : undefined;
+}
+
+function replySubject(subject = "") {
+  return /^re:/i.test(subject) ? subject : `Re: ${subject}`;
+}
+
+async function zohoSearchFolders(client) {
+  const folders = await client.list().catch(() => []);
+  const spam = folders.find((folder) => {
+    const path = String(folder.path ?? "");
+    const special = String(folder.specialUse ?? "");
+    return /\\Junk/i.test(special) || /spam|junk|bulk/i.test(path);
+  });
+  return [
+    { path: "INBOX", folder: "inbox" },
+    ...(spam ? [{ path: spam.path, folder: "spam" }] : [{ path: "Spam", folder: "spam" }, { path: "Junk", folder: "spam" }]),
+  ];
+}
+
+function moveZohoMessage(mailbox, messageId, folderPath, destination) {
+  return withZohoClient(mailbox, async (client) => {
+    const lock = await client.getMailboxLock(folderPath);
+    try {
+      return client.messageMove(Number(messageId), destination, { uid: true });
+    } finally {
+      lock.release();
+    }
+  });
+}
+
+function markZohoImportant(mailbox, messageId, folderPath = "INBOX") {
+  return withZohoClient(mailbox, async (client) => {
+    const lock = await client.getMailboxLock(folderPath);
+    try {
+      return client.messageFlagsAdd(Number(messageId), ["\\Flagged"], { uid: true });
+    } finally {
+      lock.release();
+    }
+  });
 }
 
 function validateWarmupConfig(config) {
@@ -213,7 +380,15 @@ function supabaseDb(config, fetchImpl) {
   return {
     getWarmupReadyMailboxes: async (now = new Date()) => {
       const rows = await get("mailboxes?warmup_enabled=eq.true&status=in.(connected,warming)&select=*&limit=100");
-      return Promise.all(rows.map(async (row) => ({ ...row, warmup_count_today: await countWarmupToday(get, row, now) })));
+      return Promise.all(
+        rows.map(async (row) => {
+          const [warmup_count_today, warmup_inbound_count_today] = await Promise.all([
+            countWarmupToday(get, row, now),
+            countWarmupToday(get, row, now, "seed_to_mailbox"),
+          ]);
+          return { ...row, warmup_count_today, warmup_inbound_count_today };
+        }),
+      );
     },
     getWarmupSeeds: async (now = new Date()) => {
       const rows = await get("warmup_seed_accounts?status=eq.connected&select=*");
@@ -262,12 +437,17 @@ async function enrichWarmupRows(get, rows, path) {
   return base.map((row) => ({ ...row, sender: byMailbox.get(row.mailbox_id), seed: bySeed.get(row.seed_account_id) })).filter((row) => row.sender && row.seed);
 }
 
-async function countWarmupToday(get, mailbox, now) {
+async function countWarmupToday(get, mailbox, now, direction) {
   const { start, end } = localDayBounds(now, mailbox.timezone);
+  const directionFilter = direction ? `&direction=eq.${encodeURIComponent(direction)}` : "";
   const rows = await get(
-    `warmup_messages?mailbox_id=eq.${encodeURIComponent(mailbox.id)}&scheduled_for=gte.${encodeURIComponent(start.toISOString())}&scheduled_for=lt.${encodeURIComponent(end.toISOString())}&status=in.(scheduled,claimed,sent,landed_inbox,saved_from_spam,replied)&select=id`,
+    `warmup_messages?mailbox_id=eq.${encodeURIComponent(mailbox.id)}${directionFilter}&scheduled_for=gte.${encodeURIComponent(start.toISOString())}&scheduled_for=lt.${encodeURIComponent(end.toISOString())}&status=in.(scheduled,claimed,sent,landed_inbox,saved_from_spam,replied)&select=id`,
   );
   return rows.length;
+}
+
+function sentGmailMessageId(result) {
+  return result?.data?.id ?? result?.data?.message_id ?? result?.id ?? result?.message_id ?? null;
 }
 
 async function countWarmupSeed24h(get, seed, now) {

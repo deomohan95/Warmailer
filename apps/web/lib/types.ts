@@ -113,11 +113,16 @@ export type WarmupMailboxStats = EntityLineage & {
   warmupDailyLimit: number;
   warmupDailyRampup: number;
   warmupRandomizeDailyCount: boolean;
+  warmupRandomMinPercent: number;
   warmupReplyRatePercent: number;
+  warmupInboundOriginalPercent: number;
+  warmupInboundReplyRatePercent: number;
   warmupStartedAt?: string;
   sentToday: number;
+  warmupRawTargetToday: number;
   warmupTargetToday: number;
   sent7d: number;
+  received7d: number;
   inbox7d: number;
   spam7d: number;
   savedFromSpam7d: number;

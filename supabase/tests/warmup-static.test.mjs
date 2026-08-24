@@ -40,6 +40,11 @@ test("warmup settings include defaults and reply rate cap", () => {
   assert.match(migration, /warmup_randomize_daily_count boolean not null default true/i);
   assert.match(migration, /warmup_reply_rate_percent integer not null default 20/i);
   assert.match(migration, /warmup_reply_rate_percent between 0 and 100/i);
+  assert.match(migrations, /warmup_random_min integer not null default 1/i);
+  assert.match(migrations, /warmup_random_min_percent integer not null default 10/i);
+  assert.match(migrations, /warmup_inbound_original_percent integer not null default 20/i);
+  assert.match(migrations, /warmup_inbound_reply_rate_percent integer not null default 52/i);
+  assert.match(migrations, /warmup_inbound_reply_rate_percent between 0 and 100/i);
 });
 
 test("warmup seed email uniqueness uses an expression index", () => {
@@ -52,6 +57,7 @@ test("warmup reputation is derived from events and messages", () => {
   assert.match(migration, /create or replace view public\.warmup_mailbox_stats/i);
   assert.match(migration, /with \(security_invoker = true\)/i);
   assert.match(migration, /saved_from_spam_7d/i);
+  assert.match(migrations, /received_7d/i);
   assert.match(migration, /sent_today/i);
   assert.match(migration, /warmup_target_today/i);
   assert.match(migration, /reputation/i);
@@ -61,8 +67,16 @@ test("warmup reputation is unknown until placement has been checked", () => {
   assert.match(migrations, /landed_folder in \('inbox', 'spam'\)[\s\S]*?then null/i);
 });
 
+test("warmup messages support fresh seed-to-mailbox originals", () => {
+  assert.match(migrations, /direction in \('mailbox_to_seed', 'seed_to_mailbox'\)/i);
+  assert.match(migrations, /wm\.direction = 'seed_to_mailbox'[\s\S]*?received_7d/i);
+  assert.match(migrations, /warmup_inbound_original_percent/i);
+});
+
 test("warmup stats view uses the same deterministic daily random target", () => {
   assert.match(migrations, /warmup_randomize_daily_count/i);
+  assert.match(migrations, /warmup_random_min_percent/i);
+  assert.match(migrations, /raw_target_today \* warmup_random_min_percent/i);
   assert.match(migrations, /md5\(m\.id::text \|\| ':' \|\| \(\(now\(\) at time zone m\.timezone\)::date\)::text\)/i);
 });
 

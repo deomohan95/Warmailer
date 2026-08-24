@@ -117,9 +117,12 @@ describe("Warmailer shared contracts", () => {
         warmupDailyLimit: 25,
         warmupDailyRampup: 5,
         warmupRandomizeDailyCount: true,
+        warmupRandomMinPercent: 20,
         warmupReplyRatePercent: 20,
+        warmupInboundOriginalPercent: 20,
+        warmupInboundReplyRatePercent: 52,
       }),
-    ).toMatchObject({ mailboxId: "mailbox_1", warmupReplyRatePercent: 20 });
+    ).toMatchObject({ mailboxId: "mailbox_1", warmupRandomMinPercent: 20, warmupInboundReplyRatePercent: 52 });
 
     expect(
       WarmupSeedCreateInputSchema.parse({
@@ -137,7 +140,10 @@ describe("Warmailer shared contracts", () => {
         warmupDailyLimit: 25,
         warmupDailyRampup: 5,
         warmupRandomizeDailyCount: true,
+        warmupRandomMinPercent: 20,
         warmupReplyRatePercent: 101,
+        warmupInboundOriginalPercent: 20,
+        warmupInboundReplyRatePercent: 52,
       }),
     ).toThrow();
   });
