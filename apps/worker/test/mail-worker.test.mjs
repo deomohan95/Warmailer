@@ -122,6 +122,80 @@ test("uses another campaign mailbox when the first mailbox is cooling down", asy
   assert.equal(sent[0].user, "second@example.com");
 });
 
+
+test("sends the lead's due follow-up step and schedules the next saved delay", async () => {
+  const sent = [];
+  const calls = [];
+  const db = {
+    getDueCampaigns: async () => [
+      {
+        id: "campaign-1",
+        workspace_id: "workspace-1",
+        status: "scheduled",
+        timezone: "UTC",
+        start_date: "2026-08-13",
+        sending_days: [],
+        sending_window_start: "00:00",
+        sending_window_end: "23:59",
+        max_sends_per_day: 1,
+      },
+    ],
+    getFirstSequenceStep: async () => ({ step_order: 0, subject: "Intro", body: "First" }),
+    getSequenceSteps: async () => [
+      { step_order: 0, subject: "Intro", body: "First", delay_days: 0 },
+      { step_order: 1, subject: "Follow up {{first_name}}", body: "Checking on {{company}}", delay_days: 20 },
+      { step_order: 2, subject: "Last note", body: "Last", delay_days: 15 },
+    ],
+    getSendableLeads: async () => [
+      { campaign_lead_id: "campaign-lead-1", lead_id: "lead-1", name: "Corey Clark", company: "Natural Data Inc", email: "corey@example.com" },
+    ],
+    getDueCampaignLeads: async () => [
+      {
+        campaign_lead_id: "campaign-lead-1",
+        lead_id: "lead-1",
+        name: "Corey Clark",
+        company: "Natural Data Inc",
+        email: "corey@example.com",
+        next_step_order: 1,
+        mailbox_id: "mailbox-1",
+      },
+    ],
+    getUsableMailboxes: async () => [
+      {
+        id: "mailbox-1",
+        workspace_id: "workspace-1",
+        email_address: "sender@example.com",
+        display_name: "Sender",
+        encrypted_app_password: {},
+        available_today: 1,
+      },
+    ],
+    markCampaignSending: async () => {},
+    markLeadQueued: async () => {},
+    insertMessage: async (row) => ({ id: "message-1", ...row }),
+    insertMessageEvent: async () => {},
+    markMessageAccepted: async () => {},
+    markLeadSent: async (id) => calls.push(["sent", id]),
+    markLeadStepSent: async (id, nextStepOrder, nextSendAt, mailboxId) => calls.push(["step-sent", id, nextStepOrder, nextSendAt, mailboxId]),
+    consumeMailboxSend: async () => {},
+    completeCampaignIfDone: async () => {},
+  };
+
+  await sendDueCampaigns({
+    db,
+    now: new Date("2026-08-13T07:00:00.000Z"),
+    decryptSecret: () => "app-password",
+    sendMail: async (payload) => {
+      sent.push(payload);
+      return { messageId: "<zoho-1@example.com>" };
+    },
+  });
+
+  assert.equal(sent[0].subject, "Follow up Corey");
+  assert.equal(sent[0].text, "Checking on Natural Data Inc");
+  assert.deepEqual(calls, [["step-sent", "campaign-lead-1", 2, "2026-08-28T07:00:00.000Z", "mailbox-1"]]);
+});
+
 test("adds a signed open tracking pixel to outbound campaign html", async () => {
   const sent = [];
   const db = {

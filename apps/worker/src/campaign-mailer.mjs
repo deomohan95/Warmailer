@@ -36,12 +36,12 @@ export async function sendDueCampaigns({ db, sendMail, decryptSecret, tracking, 
 
   for (const campaign of campaigns) {
     summary.campaigns++;
-    const step = await db.getFirstSequenceStep(campaign.id);
-    if (!step) continue;
+    const steps = db.getSequenceSteps ? await db.getSequenceSteps(campaign.id) : [await db.getFirstSequenceStep(campaign.id)].filter(Boolean);
+    if (steps.length === 0) continue;
 
     const [mailboxes, leads] = await Promise.all([
       db.getUsableMailboxes(campaign.id),
-      db.getSendableLeads(campaign.id, limit),
+      db.getDueCampaignLeads ? db.getDueCampaignLeads(campaign.id, limit, now) : db.getSendableLeads(campaign.id, limit),
     ]);
     const lastSentByMailbox = new Map(Object.entries(await db.getLastSendAtByMailbox?.(campaign.id, mailboxes.map((mailbox) => mailbox.id)) ?? {}));
     const delayMs = Math.max(0, Number(campaign.per_mailbox_delay_seconds ?? 0) * 1000);
@@ -52,14 +52,18 @@ export async function sendDueCampaigns({ db, sendMail, decryptSecret, tracking, 
     await db.markCampaignSending(campaign.id);
 
     for (const lead of leads.slice(0, max)) {
-      const mailbox = mailboxes.find((item) => Number(item.available_today ?? 0) > 0 && isMailboxReady(item, lastSentByMailbox, delayMs, now));
+      const step = steps.find((item) => Number(item.step_order ?? 0) === Number(lead.next_step_order ?? 0));
+      if (!step) continue;
+
+      const mailbox = pickMailbox(mailboxes, lead, lastSentByMailbox, delayMs, now);
       if (!mailbox) {
         summary.skipped++;
-        break;
+        if (!lead.mailbox_id) break;
+        continue;
       }
 
       mailbox.available_today = Number(mailbox.available_today) - 1;
-      const sent = await sendCampaignLead({ db, sendMail, decryptSecret, campaign, step, lead, mailbox, now, tracking });
+      const sent = await sendCampaignLead({ db, sendMail, decryptSecret, campaign, step, steps, lead, mailbox, now, tracking });
       summary[sent ? "sent" : "failed"]++;
       if (sent) lastSentByMailbox.set(mailbox.id, now.toISOString());
     }
@@ -70,13 +74,21 @@ export async function sendDueCampaigns({ db, sendMail, decryptSecret, tracking, 
   return summary;
 }
 
+function pickMailbox(mailboxes, lead, lastSentByMailbox, delayMs, now) {
+  if (lead.mailbox_id) {
+    const mailbox = mailboxes.find((item) => item.id === lead.mailbox_id);
+    return mailbox && Number(mailbox.available_today ?? 0) > 0 && isMailboxReady(mailbox, lastSentByMailbox, delayMs, now) ? mailbox : null;
+  }
+  return mailboxes.find((item) => Number(item.available_today ?? 0) > 0 && isMailboxReady(item, lastSentByMailbox, delayMs, now));
+}
+
 function isMailboxReady(mailbox, lastSentByMailbox, delayMs, now) {
   if (delayMs <= 0) return true;
   const lastSentAt = lastSentByMailbox.get(mailbox.id);
   return !lastSentAt || now - new Date(lastSentAt) >= delayMs;
 }
 
-async function sendCampaignLead({ db, sendMail, decryptSecret, campaign, step, lead, mailbox, now, tracking }) {
+async function sendCampaignLead({ db, sendMail, decryptSecret, campaign, step, steps, lead, mailbox, now, tracking }) {
   const nowIso = now.toISOString();
   await db.markLeadQueued(lead.campaign_lead_id);
 
@@ -131,7 +143,11 @@ async function sendCampaignLead({ db, sendMail, decryptSecret, campaign, step, l
       occurred_at: nowIso,
       metadata: {},
     });
-    await db.markLeadSent(lead.campaign_lead_id);
+    const nextStepOrder = Number(step.step_order ?? lead.next_step_order ?? 0) + 1;
+    const nextStep = steps?.find((item) => Number(item.step_order ?? 0) === nextStepOrder);
+    const nextSendAt = nextStep ? addDays(now, Number(nextStep.delay_days ?? 0)).toISOString() : null;
+    if (db.markLeadStepSent) await db.markLeadStepSent(lead.campaign_lead_id, nextStepOrder, nextSendAt, mailbox.id);
+    else await db.markLeadSent(lead.campaign_lead_id);
     await db.consumeMailboxSend(mailbox.id, mailbox.workspace_id, mailbox.timezone, now);
     return true;
   } catch (error) {
@@ -145,6 +161,10 @@ async function sendCampaignLead({ db, sendMail, decryptSecret, campaign, step, l
     });
     return false;
   }
+}
+
+function addDays(date, days) {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
 function signOpen({ hmacKey, workspaceId, messageId }) {

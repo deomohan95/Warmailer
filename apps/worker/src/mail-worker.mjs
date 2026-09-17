@@ -138,8 +138,25 @@ function supabaseDb(config, fetchImpl) {
 
   return {
     getDueCampaigns: () => get("campaigns?status=in.(scheduled,sending)&select=*&order=created_at.asc&limit=50"),
+    getSequenceSteps: (campaignId) => get(`campaign_sequence_steps?campaign_id=eq.${campaignId}&select=*&order=step_order.asc`),
     getFirstSequenceStep: async (campaignId) =>
       (await get(`campaign_sequence_steps?campaign_id=eq.${campaignId}&step_order=eq.0&select=*&limit=1`))[0] ?? null,
+    getDueCampaignLeads: async (campaignId, limit, now = new Date()) => {
+      const rows = await get(
+        `campaign_leads?campaign_id=eq.${campaignId}&status=in.(selected,queued,sent)&select=id,lead_id,status,next_step_order,next_send_at,mailbox_id&order=created_at.asc&limit=${limit * 5}`,
+      );
+      const dueRows = rows
+        .filter((row) => row.status === "selected" || row.status === "queued" || (row.status === "sent" && row.next_send_at && new Date(row.next_send_at) <= now))
+        .slice(0, limit);
+      const ids = dueRows.map((row) => row.lead_id);
+      if (ids.length === 0) return [];
+      const leads = await get(`all_leads_mmp?id=in.(${ids.join(",")})&email_status=eq.found&select=id,name,company,job_title,email`);
+      const byId = new Map(leads.map((lead) => [lead.id, lead]));
+      return dueRows.flatMap((row) => {
+        const lead = byId.get(row.lead_id);
+        return lead?.email ? [{ ...lead, campaign_lead_id: row.id, lead_id: row.lead_id, next_step_order: row.next_step_order ?? 0, next_send_at: row.next_send_at, mailbox_id: row.mailbox_id }] : [];
+      });
+    },
     getSendableLeads: async (campaignId, limit) => {
       const rows = await get(`campaign_leads?campaign_id=eq.${campaignId}&status=in.(selected,queued)&select=id,lead_id&order=created_at.asc&limit=${limit}`);
       const ids = rows.map((row) => row.lead_id);
@@ -178,6 +195,8 @@ function supabaseDb(config, fetchImpl) {
     markCampaignSending: (campaignId) => patch(`campaigns?id=eq.${campaignId}`, { status: "sending", updated_at: new Date().toISOString() }),
     markLeadQueued: (id) => patch(`campaign_leads?id=eq.${id}`, { status: "queued", updated_at: new Date().toISOString() }),
     markLeadSent: (id) => patch(`campaign_leads?id=eq.${id}`, { status: "sent", updated_at: new Date().toISOString() }),
+    markLeadStepSent: (id, nextStepOrder, nextSendAt, mailboxId) =>
+      patch(`campaign_leads?id=eq.${id}`, { status: "sent", next_step_order: nextStepOrder, next_send_at: nextSendAt, mailbox_id: mailboxId, updated_at: new Date().toISOString() }),
     insertMessage: (row) => post("messages", row),
     insertMessageEvent: (row) => post("message_events", row, "return=minimal").catch((error) => {
       if (!String(error.message).includes("409")) throw error;
@@ -203,7 +222,8 @@ function supabaseDb(config, fetchImpl) {
     },
     completeCampaignIfDone: async (campaignId) => {
       const pending = await get(`campaign_leads?campaign_id=eq.${campaignId}&status=in.(selected,queued)&select=id&limit=1`);
-      if (pending.length === 0) await patch(`campaigns?id=eq.${campaignId}`, { status: "completed", updated_at: new Date().toISOString() });
+      const scheduled = pending.length ? pending : await get(`campaign_leads?campaign_id=eq.${campaignId}&status=eq.sent&next_send_at=not.is.null&select=id&limit=1`);
+      if (scheduled.length === 0) await patch(`campaigns?id=eq.${campaignId}`, { status: "completed", updated_at: new Date().toISOString() });
     },
     getConnectedMailboxes: () => get("mailboxes?status=eq.connected&select=*"),
     messageExists: async (mailboxId, providerMessageId) =>
