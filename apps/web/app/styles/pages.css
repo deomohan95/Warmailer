@@ -426,6 +426,40 @@
   font-variant-numeric: tabular-nums;
 }
 
+.sequence-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.email-preview-card {
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  background: var(--surface-raised);
+}
+
+.email-preview-kicker {
+  margin-bottom: 4px;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.email-preview-subject {
+  margin-bottom: var(--s-2);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.email-preview-body {
+  margin: 0;
+  color: var(--ink-2);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 /* ---------- Inbox ---------- */
 
 /**

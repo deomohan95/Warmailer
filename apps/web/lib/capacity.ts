@@ -1,4 +1,4 @@
-import type { CampaignSchedule, MailboxCapacity, SequenceStep } from "@/lib/types";
+import type { CampaignSchedule, Lead, MailboxCapacity, SequenceStep } from "@/lib/types";
 
 /**
  * The only capacity maths in the frontend. Mailbox hard limits are the source of
@@ -9,6 +9,16 @@ import type { CampaignSchedule, MailboxCapacity, SequenceStep } from "@/lib/type
 export const SUPPORTED_VARIABLES = ["first_name", "company", "job_title"] as const;
 
 export type SupportedVariable = (typeof SUPPORTED_VARIABLES)[number];
+export type SequencePreviewLead = Pick<Lead, "name" | "company" | "jobTitle">;
+
+export function renderSequenceText(text: string, lead?: SequencePreviewLead): string {
+  const name = lead?.name.trim() ?? "";
+  const firstName = name.split(/\s+/)[0] || name;
+  return text
+    .replaceAll("{{first_name}}", firstName || "{{first_name}}")
+    .replaceAll("{{company}}", lead?.company || "{{company}}")
+    .replaceAll("{{job_title}}", lead?.jobTitle || "{{job_title}}");
+}
 
 /** A mailbox may only carry campaign sends when it is fully connected. */
 export function isSendable(mailbox: MailboxCapacity): boolean {

@@ -12,6 +12,7 @@ import {
   estimatedDaysToComplete,
   isSendable,
   launchBlockers,
+  renderSequenceText,
   SUPPORTED_VARIABLES,
   unresolvedVariables,
 } from "@/lib/capacity";
@@ -110,6 +111,7 @@ export function CampaignWizard({
   });
   const unresolved = unresolvedVariables(sequence);
   const days = estimatedDaysToComplete(eligible.length, Math.min(capacity, schedule.maxSendsPerDay || capacity));
+  const previewLead = eligible[0];
 
   function toggle(list: string[], id: string): string[] {
     return list.includes(id) ? list.filter((value) => value !== id) : [...list, id];
@@ -546,6 +548,30 @@ export function CampaignWizard({
                   This campaign can send only through selected mailboxes and cannot exceed their hard limits.
                 </Notice>
 
+
+                <div className="sequence-preview" aria-label="Email preview">
+                  <div className="section-head">
+                    <div>
+                      <h3>Email preview</h3>
+                      <p className="muted">
+                        {previewLead ? `Rendered for ${previewLead.name}` : "Select an eligible lead to preview real values."}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="stack" style={{ gap: "var(--s-3)" }}>
+                    {sequence.map((item, index) => (
+                      <article key={item.stepId} className="email-preview-card">
+                        <div className="email-preview-kicker">
+                          {index === 0 ? "First email" : `Follow-up ${index} after ${item.delayDays} days`}
+                        </div>
+                        <div className="email-preview-subject">
+                          {renderSequenceText(item.subject || "(No subject)", previewLead)}
+                        </div>
+                        <pre className="email-preview-body">{renderSequenceText(item.body || "(No body)", previewLead)}</pre>
+                      </article>
+                    ))}
+                  </div>
+                </div>
                 {blockers.length > 0 ? (
                   <div className="blockers">
                     {blockers.map((blocker) => (

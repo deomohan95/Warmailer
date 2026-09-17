@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
-import { campaignDailyCapacity, launchBlockers, type LaunchCheckInput } from "../lib/capacity";
+import { campaignDailyCapacity, launchBlockers, renderSequenceText, type LaunchCheckInput } from "../lib/capacity";
 import { allSeedRecords, seedMailboxes } from "../lib/demo";
 import { NAV_ITEMS } from "../lib/nav";
 import type { CampaignSchedule, MailboxCapacity, SequenceStep } from "../lib/types";
@@ -249,6 +249,20 @@ describe("mailbox hard limits gate campaign launch", () => {
   });
 });
 
+
+describe("campaign launch preview", () => {
+  it("renders sequence variables with a real selected lead", () => {
+    const lead = {
+      name: "Angelyn Rivera",
+      company: "All County Management",
+      jobTitle: "Property Manager",
+    };
+
+    expect(renderSequenceText("Hi {{first_name}}, about {{company}} / {{job_title}}", lead)).toBe(
+      "Hi Angelyn, about All County Management / Property Manager",
+    );
+  });
+});
 describe("app passwords are write-only", () => {
   it("keeps no password value on a mailbox record", () => {
     for (const mailbox of seedMailboxes) {
