@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Warmailer reply and bounce sync worker every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit=warmailer-mail-sync.service
+
+[Install]
+WantedBy=timers.target

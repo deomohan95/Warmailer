@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Warmailer campaign send worker every 2 minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=2min
+AccuracySec=10s
+Persistent=true
+Unit=warmailer-mail-send.service
+
+[Install]
+WantedBy=timers.target

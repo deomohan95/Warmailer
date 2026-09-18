@@ -1,0 +1,13 @@
+[Unit]
+Description=Warmailer campaign send worker
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/Warmailer
+Environment=NODE_ENV=production
+EnvironmentFile=/root/Warmailer/.env.local
+ExecStart=/usr/bin/npm run mail:send --workspace @warmailer/worker
+TimeoutStartSec=5min
+Nice=5

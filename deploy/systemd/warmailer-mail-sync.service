@@ -1,0 +1,13 @@
+[Unit]
+Description=Warmailer reply and bounce sync worker
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/Warmailer
+Environment=NODE_ENV=production
+EnvironmentFile=/root/Warmailer/.env.local
+ExecStart=/usr/bin/npm run mail:sync --workspace @warmailer/worker
+TimeoutStartSec=15min
+Nice=5
