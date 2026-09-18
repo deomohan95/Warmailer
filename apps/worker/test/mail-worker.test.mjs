@@ -314,6 +314,45 @@ test("syncs an inbound reply onto the original outbound thread", async () => {
   assert.deepEqual(calls.at(-1), ["lead", "campaign-1", "lead-1", "replied"]);
 });
 
+test("records a DSN bounce against the original outbound message", async () => {
+  const calls = [];
+  const db = {
+    getConnectedMailboxes: async () => [{ id: "mailbox-1", email_address: "sender@example.com" }],
+    messageExists: async () => false,
+    findMessageByProviderId: async (_mailboxId, providerMessageId) => {
+      assert.equal(providerMessageId, "<zoho-1@example.com>");
+      return {
+        id: "outbound-1",
+        workspace_id: "workspace-1",
+        mailbox_id: "mailbox-1",
+        lead_id: "lead-1",
+        campaign_id: "campaign-1",
+        provider_message_id: "<zoho-1@example.com>",
+      };
+    },
+    insertMessageEvent: async (row) => calls.push(["event", row.event_type, row.message_id, row.metadata.bounceType]),
+    markCampaignLeadBounced: async (campaignId, leadId) => calls.push(["lead", campaignId, leadId, "bounced"]),
+  };
+
+  const result = await syncInboundReplies({
+    db,
+    fetchMessages: async () => [
+      {
+        messageId: "<bounce-1@zoho.com>",
+        from: "mailer-daemon@zoho.com",
+        subject: "Delivery Status Notification (Failure)",
+        text: "Final-Recipient: rfc822; bad@example.com\nAction: failed\nStatus: 5.1.1\nDiagnostic-Code: smtp; 550 5.1.1 User unknown\nOriginal-Message-ID: <zoho-1@example.com>",
+        receivedAt: "2026-08-13T07:05:00.000Z",
+      },
+    ],
+  });
+
+  assert.equal(result.synced, 1);
+  assert.deepEqual(calls, [
+    ["event", "bounce", "outbound-1", "hard"],
+    ["lead", "campaign-1", "lead-1", "bounced"],
+  ]);
+});
 test("skips inbound mail that is not a reply to a tracked outbound message", async () => {
   const calls = [];
   const result = await syncInboundReplies({

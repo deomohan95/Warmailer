@@ -33,6 +33,7 @@ export function loadMailConfig(env = process.env) {
     smtpPort: Number(value("ZOHO_SMTP_PORT") ?? 465),
     imapHost: value("ZOHO_IMAP_HOST") ?? "imap.zoho.com",
     imapPort: Number(value("ZOHO_IMAP_PORT") ?? 993),
+    imapFetchLimit: Number(value("MAIL_WORKER_IMAP_FETCH_LIMIT") ?? 50),
     sendLimit: Number(value("MAIL_WORKER_SEND_LIMIT") ?? 25),
     trackingBaseUrl: value("TRACKING_BASE_URL")?.replace(/\/$/, ""),
     trackingHmacKey: Buffer.from(value("TRACKING_HMAC_KEY") ?? "", "base64"),
@@ -64,6 +65,7 @@ export async function runMailWorker({ config = loadMailConfig(), fetchImpl = fet
             ...mailbox,
             host: mailbox.imap_host ?? config.imapHost,
             port: mailbox.imap_port ?? config.imapPort,
+            fetchLimit: config.imapFetchLimit,
             pass: decrypt(mailbox.encrypted_app_password, mailbox.id),
           }),
       })
@@ -87,14 +89,20 @@ export async function fetchImapMessages(mailbox) {
     port: Number(mailbox.port ?? 993),
     secure: true,
     logger: false,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 30000,
+    disableAutoIdle: true,
     auth: { user: mailbox.email_address, pass: mailbox.pass },
   });
   await client.connect();
   let lock;
   try {
-    lock = await client.getMailboxLock("INBOX");
+    lock = await client.getMailboxLock("INBOX", { acquireTimeout: 15000 });
     const messages = [];
-    for await (const msg of client.fetch({ seen: false }, { envelope: true, source: true }, { uid: true })) {
+    const total = Number(client.mailbox.exists ?? 0);
+    const start = Math.max(1, total - Number(mailbox.fetchLimit ?? 50));
+    for await (const msg of client.fetch(`${start}:*`, { envelope: true, source: true }, { uid: true })) {
       const parsed = await simpleParser(msg.source);
       messages.push({
         messageId: parsed.messageId,
@@ -245,6 +253,8 @@ function supabaseDb(config, fetchImpl) {
     attachMessageToThread: (messageId, threadId) => patch(`messages?id=eq.${messageId}`, { thread_id: threadId }),
     markCampaignLeadReplied: (campaignId, leadId) =>
       patch(`campaign_leads?campaign_id=eq.${campaignId}&lead_id=eq.${leadId}`, { status: "replied", updated_at: new Date().toISOString() }),
+    markCampaignLeadBounced: (campaignId, leadId) =>
+      patch(`campaign_leads?campaign_id=eq.${campaignId}&lead_id=eq.${leadId}`, { status: "bounced", updated_at: new Date().toISOString() }),
   };
 }
 

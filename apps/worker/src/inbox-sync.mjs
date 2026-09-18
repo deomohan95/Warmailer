@@ -12,6 +12,28 @@ export async function syncInboundReplies({ db, fetchMessages }) {
         continue;
       }
 
+      const bounce = detectBounce(inbound);
+      if (bounce) {
+        const parent = await db.findMessageByProviderId(mailbox.id, bounce.providerMessageId);
+        if (!parent?.campaign_id || !parent?.lead_id) {
+          summary.skipped++;
+          continue;
+        }
+        const workspaceId = parent?.workspace_id ?? mailbox.workspace_id;
+        await db.insertMessageEvent({
+          workspace_id: workspaceId,
+          message_id: parent.id,
+          event_type: "bounce",
+          source: "zoho_mail",
+          provider_event_id: `imap:${inbound.messageId}`,
+          occurred_at: inbound.receivedAt,
+          metadata: bounce,
+        });
+        await db.markCampaignLeadBounced?.(parent.campaign_id, parent.lead_id);
+        summary.synced++;
+        continue;
+      }
+
       const parentId = inbound.inReplyTo || inbound.references?.at?.(-1) || null;
       if (!parentId) {
         summary.skipped++;
@@ -65,6 +87,29 @@ export async function syncInboundReplies({ db, fetchMessages }) {
   }
 
   return summary;
+}
+
+export function detectBounce(inbound) {
+  const subject = String(inbound.subject ?? "");
+  const text = String(inbound.text ?? "");
+  const from = String(inbound.from ?? "");
+  const blob = `${subject}\n${text}`;
+  const looksLikeBounce = /mailer-daemon|postmaster/i.test(from) || /delivery status notification|delivery failure|undeliver/i.test(subject) || /Final-Recipient:|Diagnostic-Code:|Action:\s*failed/i.test(text);
+  if (!looksLikeBounce) return null;
+
+  const providerMessageId = firstMatch(blob, /Original-Message-ID:\s*(<[^>]+>)/i) ?? inbound.inReplyTo ?? inbound.references?.at?.(-1) ?? null;
+  if (!providerMessageId) return null;
+
+  const status = firstMatch(text, /Status:\s*([^\r\n]+)/i);
+  const diagnostic = firstMatch(text, /Diagnostic-Code:\s*([^\r\n]+)/i);
+  const reason = `${status ?? ""} ${diagnostic ?? ""}`;
+  const bounceType = /^5\./.test(status ?? "") || /user unknown|no such user|invalid recipient|domain not found/i.test(reason) ? "hard" : "soft";
+
+  return { providerMessageId, status, diagnostic, bounceType };
+}
+
+function firstMatch(value, regex) {
+  return regex.exec(value)?.[1]?.trim() ?? null;
 }
 
 function stripReplyPrefix(subject) {
