@@ -407,6 +407,14 @@ describe("inbox empty states", () => {
     expect(component).not.toContain('<div className="message-body">{selected.preview}</div>');
   });
 
+  it("counts inbox folder tabs after campaign and mailbox filters", async () => {
+    const component = await source("components/inbox/inbox-workspace.tsx");
+
+    expect(component).toContain("filteredConversations");
+    expect(component).toContain("filteredConversations.filter((thread) => inFolder(thread, item.key)).length");
+    expect(component).not.toContain("conversations.filter((thread) => inFolder(thread, item.key)).length");
+  });
+
   it("renders dashboard metrics from campaigns, messages and activity with a campaign filter", async () => {
     const page = await source("app/(app)/page.tsx");
     const component = await source("components/dashboard/dashboard-workspace.tsx");
@@ -600,6 +608,13 @@ describe("lineage metadata", () => {
 });
 
 describe("capacity has a single source", () => {
+  it("labels mailbox capacity as sent today and left", async () => {
+    const dashboard = await source("components/dashboard/dashboard-workspace.tsx");
+
+    expect(dashboard).toContain("sent today");
+    expect(dashboard).toContain("left");
+    expect(dashboard).not.toContain("of ${mailbox.dailyHardLimit} left");
+  });
   it("is not recomputed outside lib/capacity.ts", async () => {
     const files = [
       "app/(app)/page.tsx",

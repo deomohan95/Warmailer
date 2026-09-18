@@ -65,16 +65,19 @@ export function InboxWorkspace({
   const [isSending, setIsSending] = useState(false);
 
   const conversations = useMemo(() => buildConversations(threads, messages), [threads, messages]);
-  const visible = useMemo(() => {
+  const filteredConversations = useMemo(() => {
     return conversations
-      .filter((item) => inFolder(item, folder))
       .filter((item) => campaignId === "all" || item.campaignId === campaignId)
-      .filter((item) => mailboxId === "all" || item.mailboxId === mailboxId)
+      .filter((item) => mailboxId === "all" || item.mailboxId === mailboxId);
+  }, [campaignId, conversations, mailboxId]);
+  const visible = useMemo(() => {
+    return filteredConversations
+      .filter((item) => inFolder(item, folder))
       .sort((a, b) => {
         const diff = new Date(a.lastAt).getTime() - new Date(b.lastAt).getTime();
         return sortOrder === "latest" ? -diff : diff;
       });
-  }, [campaignId, conversations, folder, mailboxId, sortOrder]);
+  }, [filteredConversations, folder, sortOrder]);
 
   const selected = visible.find((item) => item.key === selectedKey) ?? visible[0] ?? null;
   const mailbox = selected ? mailboxes.find((item) => item.mailboxId === selected.mailboxId) : undefined;
@@ -141,7 +144,7 @@ export function InboxWorkspace({
               }}
             >
               {item.label}
-              <span className="tab-count">{conversations.filter((thread) => inFolder(thread, item.key)).length}</span>
+              <span className="tab-count">{filteredConversations.filter((thread) => inFolder(thread, item.key)).length}</span>
             </button>
           ))}
         </div>

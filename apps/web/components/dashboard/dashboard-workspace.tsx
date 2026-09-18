@@ -345,16 +345,19 @@ export function DashboardWorkspace({
             {mailboxes.length === 0 ? (
               <EmptyState small icon={<IconMailbox />} title="No mailbox connected" />
             ) : (
-              mailboxes.map((mailbox) => (
-                <Meter
-                  key={mailbox.mailboxId}
-                  label={mailbox.emailAddress}
-                  value={mailbox.usedToday + mailbox.reservedToday}
-                  max={mailbox.dailyHardLimit}
-                  valueLabel={`${availableToday(mailbox)} of ${mailbox.dailyHardLimit} left`}
-                  tone={isSendable(mailbox) ? "accent" : "warning"}
-                />
-              ))
+              mailboxes.map((mailbox) => {
+                const usedToday = mailbox.usedToday + mailbox.reservedToday;
+                return (
+                  <Meter
+                    key={mailbox.mailboxId}
+                    label={mailbox.emailAddress}
+                    value={usedToday}
+                    max={mailbox.dailyHardLimit}
+                    valueLabel={`${usedToday} sent today, ${availableToday(mailbox)} left`}
+                    tone={isSendable(mailbox) ? "accent" : "warning"}
+                  />
+                );
+              })
             )}
           </div>
         </Card>
