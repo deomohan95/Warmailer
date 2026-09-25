@@ -32,6 +32,7 @@ export async function POST(request: Request) {
     let verified = 0;
     let notVerified = 0;
     let failed = 0;
+    let lastError: string | null = null;
 
     for (const lead of eligible) {
       try {
@@ -45,7 +46,8 @@ export async function POST(request: Request) {
           updated_at: new Date().toISOString(),
         });
         verified++;
-      } catch {
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : "Email verification failed";
         failed++;
       }
     }
@@ -59,6 +61,7 @@ export async function POST(request: Request) {
       notVerified,
       failed,
       skipped: leadIds.length - eligible.length,
+      lastError,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Email verification failed";

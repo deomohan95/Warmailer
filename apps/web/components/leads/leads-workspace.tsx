@@ -205,7 +205,7 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
     setVerifying(false);
 
     const result = (await response.json().catch(() => null)) as
-      | { verified?: number; notVerified?: number; failed?: number; skipped?: number; error?: string }
+      | { verified?: number; notVerified?: number; failed?: number; skipped?: number; lastError?: string | null; error?: string }
       | null;
 
     if (!response.ok) {
@@ -214,7 +214,7 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
     }
 
     setVerificationMessage(
-      `${result?.verified ?? 0} verified, ${result?.notVerified ?? 0} not verified, ${result?.failed ?? 0} failed, ${result?.skipped ?? 0} skipped.`,
+      `${result?.verified ?? 0} verified, ${result?.notVerified ?? 0} not verified, ${result?.failed ?? 0} failed, ${result?.skipped ?? 0} skipped.${result?.lastError ? ` ${result.lastError}` : ""}`,
     );
     clearSelection();
     router.refresh();
