@@ -28,13 +28,13 @@ Authorization comes from `workspace_members`, not user-editable JWT metadata. Br
 
 ## Lead Import and Deduplication
 
-Accepted canonical CSV headers are:
+Required CSV headers are:
 
 ```text
-source_file,name,job_title,company,link,location,employees,industry
+name,link,company
 ```
 
-The parser streams files, tolerates BOM/whitespace and reordered headers, warns on unknown columns, and rejects missing canonical columns. A usable row needs `name` and either a valid LinkedIn profile URL or a non-empty company.
+Optional columns such as `source_file`, `job_title`, and `location` are kept when present. Employees and industry are not required. A usable row needs `name` and either a valid LinkedIn profile URL or a non-empty company.
 
 Deduplication is workspace-scoped:
 
@@ -59,9 +59,13 @@ Fallback actor:
 
 - `x_guru/linkedin-email-Scraper-no-cookies`
 - Actor ID `q3wko0Sbx6ZAAB2xf`
-- Bounded bulk runs with `{ "linkedinUrls": ["<canonical-url>"] }`
+- Bounded bulk runs with `{ "linkedinUrls": ["<canonical-url>"], "includeWorkEmails": true, "includePersonalEmails": true, "onlyWithEmails": true }`
 
 Only a successfully completed primary run with no email enters fallback. Timeouts, rate limits, malformed output, and transport failures retry and never masquerade as `not_found`. Fallback results are matched by canonical LinkedIn URL, never array position or name.
+
+Apify results store `found`. After enrichment finishes, users select found leads and press
+**Verify emails** to run Reoon. Only a Reoon safe/valid result promotes the lead to `verified`;
+campaign launch and send workers must only use `verified` leads.
 
 ## Campaigns and Delivery
 

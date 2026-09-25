@@ -13,6 +13,7 @@ export const LEAD_STATUS: Record<LeadStatus, StatusDescriptor> = {
   queued: { label: "Queued", tone: "neutral" },
   processing: { label: "Processing", tone: "accent" },
   email_found: { label: "Email found", tone: "good" },
+  verified: { label: "Verified", tone: "good" },
   not_found: { label: "Not found", tone: "warning" },
   failed: { label: "Failed", tone: "critical" },
   suppressed: { label: "Suppressed", tone: "critical" },

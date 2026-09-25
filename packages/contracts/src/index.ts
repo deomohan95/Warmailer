@@ -11,7 +11,7 @@ export const JobStatusSchema = z.enum([
 
 export const WorkspaceRoleSchema = z.enum(["owner", "admin", "member"]);
 
-export const EmailStatusSchema = z.enum(["not_enriched", "queued", "processing", "found", "not_found", "failed"]);
+export const EmailStatusSchema = z.enum(["not_enriched", "queued", "processing", "found", "verified", "not_found", "failed"]);
 
 export const MailboxStatusSchema = z.enum(["not_connected", "connected", "warming", "sending_paused", "error"]);
 

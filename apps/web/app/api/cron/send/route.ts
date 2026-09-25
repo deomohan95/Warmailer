@@ -124,7 +124,7 @@ function supabaseDb(config: SendConfig) {
       const ids = dueRows.map((row) => row.lead_id);
       if (ids.length === 0) return [];
       const leads = await get<{ id: string; name: string; company: string; job_title: string; email: string }>(
-        `all_leads_mmp?id=in.(${ids.join(",")})&email_status=eq.found&select=id,name,company,job_title,email`,
+        `all_leads_mmp?id=in.(${ids.join(",")})&email_status=eq.verified&select=id,name,company,job_title,email`,
       );
       const byId = new Map(leads.map((lead) => [lead.id, lead]));
       return dueRows.flatMap((row) => {
@@ -139,7 +139,7 @@ function supabaseDb(config: SendConfig) {
       const ids = rows.map((row) => row.lead_id);
       if (ids.length === 0) return [];
       const leads = await get<{ id: string; name: string; company: string; job_title: string; email: string }>(
-        `all_leads_mmp?id=in.(${ids.join(",")})&email_status=eq.found&select=id,name,company,job_title,email`,
+        `all_leads_mmp?id=in.(${ids.join(",")})&email_status=eq.verified&select=id,name,company,job_title,email`,
       );
       const byId = new Map(leads.map((lead) => [lead.id, lead]));
       return rows.flatMap((row) => {

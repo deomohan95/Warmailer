@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { ACCESS_COOKIE, REFRESH_COOKIE, loginIdentifierToEmail } from "@/lib/auth";
-import { requireSupabaseConfig } from "@/lib/backend-data";
+import { requireSupabaseAuthConfig } from "@/lib/backend-data";
 import { isPublicHttpsRequest, publicRequestUrl } from "@/lib/request-url";
 
 export async function POST(request: NextRequest) {
   const form = await request.formData();
   const email = loginIdentifierToEmail(String(form.get("identifier") ?? ""));
   const password = String(form.get("password") ?? "");
-  const { url, key } = requireSupabaseConfig();
+  const { url, key } = requireSupabaseAuthConfig();
 
   const auth = await fetch(`${url}/auth/v1/token?grant_type=password`, {
     method: "POST",

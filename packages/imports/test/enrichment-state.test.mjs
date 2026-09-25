@@ -49,7 +49,12 @@ test("fallback batches only genuine primary misses and matches by canonical URL"
   ]);
   assert.deepEqual(fallbackActorInput(batch.items), {
     actorId: "q3wko0Sbx6ZAAB2xf",
-    input: { linkedinUrls: ["https://www.linkedin.com/in/a"] },
+    input: {
+      linkedinUrls: ["https://www.linkedin.com/in/a"],
+      includeWorkEmails: true,
+      includePersonalEmails: true,
+      onlyWithEmails: true,
+    },
   });
 });
 

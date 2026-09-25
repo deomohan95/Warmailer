@@ -4,11 +4,14 @@ import {
   getActiveWorkspace,
   getAuthUser,
   getCampaignDetail,
+  getCampaignDailyStats,
+  getCampaignStats,
   getInboxMessages,
   getLeads,
   getMailboxes,
   mapCampaignActivityRow,
   mapCampaignRow,
+  mapCampaignStatsRow,
   mapInboxMessageRow,
   mapLeadRow,
   mapMailboxRow,
@@ -27,6 +30,13 @@ describe("backend data mapping", () => {
     expect(() => requireSupabaseConfig({ NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co" })).toThrow(
       "Missing Supabase API key",
     );
+    expect(
+      requireSupabaseConfig({
+        NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
+        SUPABASE_SECRET_KEY: "secret-key",
+        SUPABASE_SERVICE_ROLE_KEY: "legacy-service-role-key",
+      }),
+    ).toEqual({ url: "https://project.supabase.co", key: "secret-key" });
   });
 
   it("parses the repo dotenv format without reading secrets into the client", () => {
@@ -46,6 +56,7 @@ describe("backend data mapping", () => {
 
   it("validates session cookies with the same Supabase key loader used by login", async () => {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://project.supabase.co");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "publishable-key");
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ id: "user_1", email: "owner@example.com" })));
 
@@ -53,7 +64,7 @@ describe("backend data mapping", () => {
     expect(fetch).toHaveBeenCalledWith(
       "https://project.supabase.co/auth/v1/user",
       expect.objectContaining({
-        headers: expect.objectContaining({ apikey: "test-key" }),
+        headers: expect.objectContaining({ apikey: "publishable-key" }),
       }),
     );
   });
@@ -176,6 +187,75 @@ describe("backend data mapping", () => {
     ).toMatchObject({ eventType: "replied", messageId: "message_1" });
   });
 
+  it("maps campaign aggregate stats independently of paginated activity rows", () => {
+    expect(
+      mapCampaignStatsRow({
+        campaign_id: "campaign_1",
+        workspace_id: "workspace_1",
+        sent_count: 197,
+        open_count: 149,
+        reply_count: 1,
+        bounce_count: 8,
+        queued_count: 197,
+        last_activity_at: "2026-09-23T16:39:35.206Z",
+      }),
+    ).toMatchObject({
+      campaignId: "campaign_1",
+      sent: 197,
+      opened: 149,
+      replied: 1,
+      bounced: 8,
+      lastActivityAt: "2026-09-23T16:39:35.206Z",
+    });
+  });
+
+  it("loads campaign stats from aggregate views instead of the recent activity feed", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://project.supabase.co");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          Response.json([
+            {
+              campaign_id: "campaign_1",
+              workspace_id: "workspace_1",
+              sent_count: 197,
+              open_count: 149,
+              reply_count: 1,
+              bounce_count: 8,
+              queued_count: 197,
+              last_activity_at: "2026-09-23T16:39:35.206Z",
+            },
+          ]),
+        )
+        .mockResolvedValueOnce(
+          Response.json([
+            {
+              campaign_id: "campaign_1",
+              workspace_id: "workspace_1",
+              activity_date: "2026-09-23",
+              sent_count: 22,
+              open_count: 19,
+              reply_count: 0,
+            },
+          ]),
+        ),
+    );
+
+    await expect(getCampaignStats("workspace_1")).resolves.toMatchObject([{ campaignId: "campaign_1", sent: 197 }]);
+    await expect(getCampaignDailyStats("workspace_1")).resolves.toMatchObject([{ campaignId: "campaign_1", sent: 22 }]);
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/campaign_stats?workspace_id=eq.workspace_1"),
+      expect.any(Object),
+    );
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/rest/v1/campaign_daily_stats?workspace_id=eq.workspace_1"),
+      expect.any(Object),
+    );
+  });
+
   it("maps inbox messages so the inbox can render the full email trail", () => {
     expect(
       mapInboxMessageRow({
@@ -265,6 +345,7 @@ describe("backend data mapping", () => {
         .mockResolvedValueOnce(Response.json([]))
         .mockResolvedValueOnce(Response.json([{ mailbox_id: "mailbox_1" }]))
         .mockResolvedValueOnce(Response.json([{ lead_id: "lead_1" }, { lead_id: "lead_2" }, { lead_id: "lead_3" }]))
+        .mockResolvedValueOnce(Response.json([]))
         .mockResolvedValueOnce(Response.json([]))
         .mockResolvedValueOnce(Response.json([]))
         .mockResolvedValueOnce(Response.json([])),

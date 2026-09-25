@@ -11,6 +11,11 @@ const migrationName = readdirSync(migrationsDir)
 assert.ok(migrationName, "expected a campaign_inbox migration");
 
 const migration = readFileSync(new URL(migrationName, migrationsDir), "utf8");
+const allMigrations = readdirSync(migrationsDir)
+  .filter((name) => name.endsWith(".sql"))
+  .sort()
+  .map((name) => readFileSync(new URL(name, migrationsDir), "utf8"))
+  .join("\n");
 
 test("campaign source tables are workspace-owned and linked to leads and mailboxes", () => {
   for (const table of ["campaigns", "campaign_sequence_steps", "campaign_leads", "campaign_mailboxes"]) {
@@ -63,4 +68,12 @@ test("dashboard overview is rewired to real campaign and inbox counts", () => {
   assert.match(migration, /unread_thread_count/i);
   assert.match(migration, /from public\.campaigns/i);
   assert.match(migration, /from public\.inbox_threads/i);
+});
+
+test("campaign metrics have aggregate views separate from the recent activity feed", () => {
+  assert.match(allMigrations, /create or replace view public\.campaign_stats/i);
+  assert.match(allMigrations, /create or replace view public\.campaign_daily_stats/i);
+  assert.match(allMigrations, /count\(\*\) filter \(where me\.event_type = 'smtp_accepted'\) as sent_count/i);
+  assert.match(allMigrations, /grant select on public\.campaign_stats to authenticated;/i);
+  assert.match(allMigrations, /grant select on public\.campaign_daily_stats to authenticated;/i);
 });

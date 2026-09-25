@@ -19,6 +19,9 @@ $fixedNames = @{
 }
 
 $managedActorKeys = @(
+    'APIFY_LINKEDIN_EMAIL_FINDER_ACTOR_ID',
+    'APIFY_LINKEDIN_EMAIL_SCRAPER_ACTOR_ID',
+    'APIFY_PRIMARY_ACTOR_ID',
     'APIFY_PRIMARY_ACTOR_NAME',
     'APIFY_PRIMARY_INPUT_KEY',
     'APIFY_FALLBACK_ACTOR_ID',
@@ -57,6 +60,9 @@ foreach ($line in $lines) {
     $output.Add("$newName=$value")
 }
 
+$output.Add('APIFY_LINKEDIN_EMAIL_FINDER_ACTOR_ID=UMdANQyqx3b2JVuxg')
+$output.Add('APIFY_LINKEDIN_EMAIL_SCRAPER_ACTOR_ID=q3wko0Sbx6ZAAB2xf')
+$output.Add('APIFY_PRIMARY_ACTOR_ID=UMdANQyqx3b2JVuxg')
 $output.Add('APIFY_PRIMARY_ACTOR_NAME=snipercoder/linkedin-email-finder')
 $output.Add('APIFY_PRIMARY_INPUT_KEY=linkedin')
 $output.Add('APIFY_FALLBACK_ACTOR_ID=q3wko0Sbx6ZAAB2xf')

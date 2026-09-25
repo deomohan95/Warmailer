@@ -15,12 +15,13 @@ could happen.
 Warmailer runs cold outbound email for several client workspaces at once:
 
 1. Leads are imported from an Apollo CSV export.
-2. Missing email addresses are found through enrichment actors.
-3. Campaigns send through connected Zoho mailboxes.
-4. Replies from every mailbox land in one shared inbox.
-5. A mailbox's hard limits cap what any campaign can send through it.
+2. Missing email addresses are found through two Apify enrichment actors.
+3. Found email addresses are verified through Reoon before they can be used.
+4. Campaigns send through connected Zoho mailboxes.
+5. Replies from every mailbox land in one shared inbox.
+6. A mailbox's hard limits cap what any campaign can send through it.
 
-Point 5 is the rule the whole interface is built around. It is covered in its own section below.
+Point 6 is the rule the whole interface is built around. It is covered in its own section below.
 
 ---
 
@@ -113,10 +114,10 @@ Manages every lead in the workspace, and the enrichment that finds their email a
 
 ### Importing
 
-The importer expects an Apollo CSV export with exactly this header row:
+The importer only requires these columns:
 
 ```text
-source_file,name,job_title,company,link,location,employees,industry
+name,link,company
 ```
 
 The **Imports** card lists past imports with rows imported and duplicates skipped.
@@ -136,10 +137,26 @@ processed:
 - **already have an email** — skipped, never re-enriched
 - **suppressed** — skipped
 
-**Find emails** acts only on the eligible group. The stated order of work: the primary
-single-link actor runs first for each lead, and only leads it reports as a genuine not-found are
-passed to the fallback bulk actor. Results write back with the enrichment batch that produced
-them, so any address can be traced to its source.
+**Find emails** acts only on the eligible group. The order of work:
+
+1. Apify scraper 1 runs one LinkedIn profile at a time:
+   `snipercoder/linkedin-email-finder`, actor ID `UMdANQyqx3b2JVuxg`, env key
+   `APIFY_LINKEDIN_EMAIL_FINDER_ACTOR_ID`.
+2. Leads still missing an email go to Apify scraper 2:
+   `x_guru/linkedin-email-Scraper-no-cookies`, actor ID `q3wko0Sbx6ZAAB2xf`, env key
+   `APIFY_LINKEDIN_EMAIL_SCRAPER_ACTOR_ID`, with work emails, personal emails and
+   only-with-emails enabled.
+3. Found emails are saved as **Email found**. The table shows queued/processing/found states while
+   the run is still in process.
+
+### Verifying emails
+
+After both Apify passes finish, select the **Email found** leads and click **Verify emails**.
+Warmailer checks those selected addresses with Reoon. Safe/valid Reoon results update the lead to
+**Verified**. Campaigns can only use **Verified** leads.
+
+Results write back with the enrichment batch that produced them, so any address can be traced to
+its source.
 
 Nothing is called yet — no actor runs from this build.
 
@@ -151,6 +168,7 @@ Nothing is called yet — no actor runs from this build.
 | Queued | Waiting for an enrichment run |
 | Processing | Enrichment in progress |
 | Email found | Address found and stored |
+| Verified | Address found and passed Reoon verification |
 | Not found | Enrichment ran and found nothing |
 | Failed | Enrichment errored |
 | Suppressed | Must never be contacted |
@@ -176,8 +194,8 @@ matter are enforced at launch, not by trapping you in a step.
 **1. Campaign basics** — name and timezone. Sending windows are read in that timezone.
 
 **2. Select leads** — pick your leads and see the selection broken into what will actually be
-sent to: eligible, skipped for having no email, skipped as suppressed, and skipped as already in
-an active campaign.
+sent to: eligible verified leads, skipped for having no email, skipped as not verified, skipped as
+suppressed, and skipped as already in an active campaign.
 
 **3. Select mailboxes** — the important step. Each mailbox shows its status and a bar of used and
 reserved against its daily hard limit. Mailboxes that cannot send are not selectable. As you

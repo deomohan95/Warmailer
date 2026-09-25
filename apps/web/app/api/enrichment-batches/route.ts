@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     const eligible = leads.filter(
       (lead) =>
         !lead.email &&
-        !["queued", "processing", "found"].includes(lead.email_status) &&
+        !["queued", "processing", "found", "verified"].includes(lead.email_status) &&
         Boolean(lead.linkedin_url_normalized),
     );
 

@@ -18,8 +18,8 @@ import { ReplyFunnel } from "@/components/dashboard/reply-funnel";
 import { Card, CardHead, EmptyState, Meter, Notice, StatusPill } from "@/components/ui/primitives";
 import { availableToday, campaignDailyCapacity, isSendable } from "@/lib/capacity";
 import { CAMPAIGN_STATUS, formatDateTime } from "@/lib/labels";
-import { dailySeries, formatRate, rate } from "@/lib/metrics";
-import type { Campaign, CampaignActivity, InboxMessage, InboxThread, Mailbox } from "@/lib/types";
+import { dailySeries, formatRate, rate, type DayPoint } from "@/lib/metrics";
+import type { Campaign, CampaignActivity, CampaignDailyStats, CampaignStats, InboxMessage, InboxThread, Mailbox } from "@/lib/types";
 
 type Overview = {
   imported_count: number;
@@ -33,6 +33,42 @@ type Overview = {
 
 function eventCount(activity: CampaignActivity[], type: CampaignActivity["eventType"]) {
   return activity.filter((event) => event.eventType === type).length;
+}
+
+function emptyCounts() {
+  return { sent: 0, opened: 0, replied: 0, bounced: 0 };
+}
+
+function aggregateStats(stats: CampaignStats[]) {
+  return stats.reduce((counts, item) => {
+    counts.sent += item.sent;
+    counts.opened += item.opened;
+    counts.replied += item.replied;
+    counts.bounced += item.bounced;
+    return counts;
+  }, emptyCounts());
+}
+
+function dailyStatsSeries(stats: CampaignDailyStats[], days = 14, today = new Date()): DayPoint[] {
+  const buckets = new Map<string, DayPoint>();
+  const end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+
+  for (let offset = days - 1; offset >= 0; offset -= 1) {
+    const day = new Date(end);
+    day.setUTCDate(day.getUTCDate() - offset);
+    const key = day.toISOString().slice(0, 10);
+    buckets.set(key, { date: key, sent: 0, opened: 0, replied: 0 });
+  }
+
+  for (const item of stats) {
+    const bucket = buckets.get(item.date);
+    if (!bucket) continue;
+    bucket.sent += item.sent;
+    bucket.opened += item.opened;
+    bucket.replied += item.replied;
+  }
+
+  return [...buckets.values()];
 }
 
 function launchWarnings(importedCount: number, emailFoundCount: number, mailboxes: Mailbox[]): string[] {
@@ -54,6 +90,8 @@ export function DashboardWorkspace({
   mailboxes,
   campaigns,
   activity,
+  campaignStats,
+  campaignDailyStats,
   inboxThreads,
   messages,
 }: {
@@ -61,6 +99,8 @@ export function DashboardWorkspace({
   mailboxes: Mailbox[];
   campaigns: Campaign[];
   activity: CampaignActivity[];
+  campaignStats: CampaignStats[];
+  campaignDailyStats: CampaignDailyStats[];
   inboxThreads: InboxThread[];
   messages: InboxMessage[];
 }) {
@@ -70,12 +110,17 @@ export function DashboardWorkspace({
 
   const filteredCampaigns = campaignId === "all" ? campaigns : selectedCampaign ? [selectedCampaign] : [];
   const filteredActivity = activity.filter(inScope);
+  const filteredStats = campaignStats.filter(inScope);
+  const filteredDailyStats = campaignDailyStats.filter(inScope);
   const filteredThreads = inboxThreads.filter(inScope);
   const filteredMessages = messages.filter(inScope);
-  const sent = eventCount(filteredActivity, "sent");
-  const opened = eventCount(filteredActivity, "opened");
-  const replied = eventCount(filteredActivity, "replied") || filteredMessages.filter((message) => message.direction === "inbound").length;
-  const bounced = eventCount(filteredActivity, "bounced");
+  const statsCounts = aggregateStats(filteredStats);
+  const sent = filteredStats.length ? statsCounts.sent : eventCount(filteredActivity, "sent");
+  const opened = filteredStats.length ? statsCounts.opened : eventCount(filteredActivity, "opened");
+  const replied = filteredStats.length
+    ? statsCounts.replied
+    : eventCount(filteredActivity, "replied") || filteredMessages.filter((message) => message.direction === "inbound").length;
+  const bounced = filteredStats.length ? statsCounts.bounced : eventCount(filteredActivity, "bounced");
   const importedCount = overview?.imported_count ?? 0;
   const emailFoundCount = overview?.email_found_count ?? 0;
   const capacity = overview?.send_capacity_today ?? campaignDailyCapacity(mailboxes);
@@ -85,7 +130,8 @@ export function DashboardWorkspace({
   const openRate = rate(opened, sent);
   const replyRate = rate(replied, sent);
   const bounceRate = rate(bounced, sent);
-  const series = dailySeries(filteredActivity);
+  const series = filteredDailyStats.length ? dailyStatsSeries(filteredDailyStats) : dailySeries(filteredActivity);
+  const statsByCampaign = new Map(campaignStats.map((item) => [item.campaignId, item]));
 
   return (
     <div className="workspace-full">
@@ -274,11 +320,13 @@ export function DashboardWorkspace({
               <div className="stack" style={{ gap: "var(--s-5)" }}>
                 {filteredCampaigns.slice(0, 6).map((campaign) => {
                   const campaignActivity = activity.filter((event) => event.campaignId === campaign.campaignId);
-                  const campaignSent = eventCount(campaignActivity, "sent");
-                  const campaignOpened = eventCount(campaignActivity, "opened");
-                  const campaignReplied = eventCount(campaignActivity, "replied");
+                  const stat = statsByCampaign.get(campaign.campaignId);
+                  const campaignSent = stat?.sent ?? eventCount(campaignActivity, "sent");
+                  const campaignOpened = stat?.opened ?? eventCount(campaignActivity, "opened");
+                  const campaignReplied = stat?.replied ?? eventCount(campaignActivity, "replied");
                   const campaignOpenRate = rate(campaignOpened, campaignSent);
                   const campaignReplyRate = rate(campaignReplied, campaignSent);
+                  const lastActivityAt = stat?.lastActivityAt ?? campaign.lastActivityAt;
 
                   return (
                     <div key={campaign.campaignId} className="stack" style={{ gap: "var(--s-2)" }}>
@@ -289,7 +337,7 @@ export function DashboardWorkspace({
                         <StatusPill {...CAMPAIGN_STATUS[campaign.status]} />
                         <span className="spacer" />
                         <span className="subtle num">
-                          {campaign.lastActivityAt ? formatDateTime(campaign.lastActivityAt) : "No activity"}
+                          {lastActivityAt ? formatDateTime(lastActivityAt) : "No activity"}
                         </span>
                       </div>
 

@@ -6,6 +6,10 @@ const migration = readFileSync(
   new URL("../migrations/20260812101110_add_dashboard_lead_views.sql", import.meta.url),
   "utf8",
 );
+const verifiedMigration = readFileSync(
+  new URL("../migrations/20260925000001_add_verified_email_status_usage.sql", import.meta.url),
+  "utf8",
+);
 
 test("lead page reads from one RLS-safe projection over all_leads_mmp", () => {
   assert.match(migration, /create or replace view public\.lead_list/i);
@@ -16,11 +20,11 @@ test("lead page reads from one RLS-safe projection over all_leads_mmp", () => {
 });
 
 test("lead readiness counts are derived from all_leads_mmp without a cache table", () => {
-  assert.match(migration, /create or replace view public\.lead_readiness/i);
-  assert.match(migration, /count\(\*\) as imported_count/i);
-  assert.match(migration, /filter \(where email is not null and email_status = 'found'\)/i);
-  assert.match(migration, /filter \(where email is null and email_status in \('not_enriched', 'not_found', 'failed'\)\)/i);
-  assert.doesNotMatch(migration, /create table if not exists public\.lead_readiness/i);
+  assert.match(verifiedMigration, /create or replace view public\.lead_readiness/i);
+  assert.match(verifiedMigration, /count\(\*\) as imported_count/i);
+  assert.match(verifiedMigration, /filter \(where email is not null and email_status in \('found', 'verified'\)\)/i);
+  assert.match(verifiedMigration, /filter \(where email is null and email_status in \('not_enriched', 'not_found', 'failed'\)\)/i);
+  assert.doesNotMatch(verifiedMigration, /create table if not exists public\.lead_readiness/i);
 });
 
 test("dashboard overview joins lead readiness and mailbox capacity instead of duplicating numbers", () => {

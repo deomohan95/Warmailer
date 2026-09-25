@@ -6,7 +6,7 @@ import { IconAlert, IconCampaigns, IconInbox, IconMailbox } from "@/components/i
 import { Card, CardHead, EmptyState, Meter, Notice, StatusPill } from "@/components/ui/primitives";
 import { availableToday, campaignDailyCapacity, estimatedDaysToComplete, isSendable } from "@/lib/capacity";
 import { CAMPAIGN_STATUS, formatDateTime, formatSendingDays, LEAD_STATUS, MAILBOX_STATUS } from "@/lib/labels";
-import type { Campaign, CampaignActivity, Lead, Mailbox } from "@/lib/types";
+import type { Campaign, CampaignActivity, CampaignStats, Lead, Mailbox } from "@/lib/types";
 
 const TABS = ["Overview", "Leads", "Sequence", "Mailboxes", "Activity"] as const;
 
@@ -30,11 +30,13 @@ export function CampaignDetail({
   leads,
   mailboxes,
   activity,
+  stats,
 }: {
   campaign: Campaign;
   leads: Lead[];
   mailboxes: Mailbox[];
   activity: CampaignActivity[];
+  stats?: CampaignStats;
 }) {
   const [tab, setTab] = useState<Tab>("Overview");
 
@@ -43,9 +45,10 @@ export function CampaignDetail({
   const capacity = campaignDailyCapacity(mailboxes);
   const remaining = campaign.selectedLeadCount;
   const days = estimatedDaysToComplete(remaining, Math.min(capacity, campaign.schedule.maxSendsPerDay || capacity));
-  const sendEvents = activity.filter((event) => event.eventType === "sent");
-  const openEvents = activity.filter((event) => event.eventType === "opened");
-  const replyEvents = activity.filter((event) => event.eventType === "replied");
+  const sendCount = stats?.sent ?? activity.filter((event) => event.eventType === "sent").length;
+  const openCount = stats?.opened ?? activity.filter((event) => event.eventType === "opened").length;
+  const replyCount = stats?.replied ?? activity.filter((event) => event.eventType === "replied").length;
+  const lastActivityAt = stats?.lastActivityAt ?? campaign.lastActivityAt;
   const running = campaign.status === "sending" || campaign.status === "scheduled";
 
   const counts: Record<Tab, number | null> = {
@@ -100,8 +103,8 @@ export function CampaignDetail({
                   </dd>
                   <dt>Last activity</dt>
                   <dd>
-                    {campaign.lastActivityAt ? (
-                      formatDateTime(campaign.lastActivityAt)
+                    {lastActivityAt ? (
+                      formatDateTime(lastActivityAt)
                     ) : (
                       <span className="subtle">No activity yet</span>
                     )}
@@ -117,19 +120,19 @@ export function CampaignDetail({
               <CardHead title="Results" display />
               <div className="card-body stack" style={{ gap: "var(--s-3)" }}>
                 <Notice icon={<IconAlert />}>
-                  {sendEvents.length === 0
+                  {sendCount === 0
                     ? "No send events recorded yet."
-                    : `${sendEvents.length} send event${sendEvents.length === 1 ? "" : "s"} recorded.`}
+                    : `${sendCount} send event${sendCount === 1 ? "" : "s"} recorded.`}
                 </Notice>
                 <Notice icon={<IconInbox size={15} />}>
-                  {replyEvents.length === 0
+                  {replyCount === 0
                     ? "No replies synced yet."
-                    : `${replyEvents.length} ${replyEvents.length === 1 ? "reply" : "replies"} synced.`}
+                    : `${replyCount} ${replyCount === 1 ? "reply" : "replies"} synced.`}
                 </Notice>
                 <Notice icon={<IconAlert />}>
-                  {openEvents.length === 0
+                  {openCount === 0
                     ? "No opens recorded yet."
-                    : `${openEvents.length} open event${openEvents.length === 1 ? "" : "s"} recorded.`}
+                    : `${openCount} open event${openCount === 1 ? "" : "s"} recorded.`}
                 </Notice>
                 <p className="subtle" style={{ fontSize: 12.5 }}>
                   Delivery, open, reply and bounce figures appear here once the mail worker records events. Nothing on

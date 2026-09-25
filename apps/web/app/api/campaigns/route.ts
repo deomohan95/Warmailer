@@ -20,7 +20,7 @@ type CampaignInput = {
 type LeadRow = {
   lead_id: string;
   email: string | null;
-  email_status: "not_enriched" | "queued" | "processing" | "found" | "not_found" | "failed";
+  email_status: "not_enriched" | "queued" | "processing" | "found" | "verified" | "not_found" | "failed";
 };
 
 type MailboxRow = {
@@ -67,7 +67,7 @@ export async function POST(request: Request) {
       timezone: mailbox.timezone,
     }));
     const blockers = launchBlockers({
-      eligibleLeadCount: leads.filter((lead) => lead.email && lead.email_status === "found").length,
+      eligibleLeadCount: leads.filter((lead) => lead.email && lead.email_status === "verified").length,
       selectedMailboxes,
       sequence: input.sequence,
       schedule: input.schedule,

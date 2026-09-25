@@ -40,13 +40,13 @@ export type LeadStatus =
   | "queued"
   | "processing"
   | "email_found"
+  | "verified"
   | "not_found"
   | "failed"
   | "suppressed";
 
-/** Column order of the Apollo export accepted by the CSV importer. */
-export const LEAD_CSV_HEADER =
-  "source_file,name,job_title,company,link,location,employees,industry";
+/** Optional import columns kept when present; only name, link and company are required. */
+export const LEAD_CSV_HEADER = "source_file,name,job_title,company,link,location";
 
 export type Lead = EntityLineage & {
   leadId: string;
@@ -191,6 +191,26 @@ export type CampaignEventType =
 export type CampaignActivity = EntityLineage & {
   eventType: CampaignEventType;
   occurredAt: string;
+};
+
+export type CampaignStats = {
+  workspaceId: string;
+  campaignId: string;
+  sent: number;
+  opened: number;
+  replied: number;
+  bounced: number;
+  queued: number;
+  lastActivityAt: string | null;
+};
+
+export type CampaignDailyStats = {
+  workspaceId: string;
+  campaignId: string;
+  date: string;
+  sent: number;
+  opened: number;
+  replied: number;
 };
 
 /* ---------- Inbox ---------- */

@@ -30,7 +30,7 @@ describe("Warmailer shared contracts", () => {
       "cancelled",
     ]);
     expect(WorkspaceRoleSchema.options).toEqual(["owner", "admin", "member"]);
-    expect(EmailStatusSchema.options).toEqual(["not_enriched", "queued", "processing", "found", "not_found", "failed"]);
+    expect(EmailStatusSchema.options).toEqual(["not_enriched", "queued", "processing", "found", "verified", "not_found", "failed"]);
     expect(MailboxStatusSchema.options).toEqual(["not_connected", "connected", "warming", "sending_paused", "error"]);
     expect(CampaignStatusSchema.options).toEqual([
       "draft",
@@ -56,9 +56,9 @@ describe("Warmailer shared contracts", () => {
   });
 
   it("accepts lead list filters without accepting a browser workspace id", () => {
-    expect(LeadListQuerySchema.parse({ search: "ops", emailStatus: "found", pageSize: 50 })).toEqual({
+    expect(LeadListQuerySchema.parse({ search: "ops", emailStatus: "verified", pageSize: 50 })).toEqual({
       search: "ops",
-      emailStatus: "found",
+      emailStatus: "verified",
       pageSize: 50,
     });
     expect(() => LeadListQuerySchema.parse({ workspaceId: "browser_ws", search: "ops" })).toThrow();

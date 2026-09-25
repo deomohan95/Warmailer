@@ -34,7 +34,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
     );
   }
 
-  const { campaign, leads, mailboxes, activity } = detail;
+  const { campaign, leads, mailboxes, activity, stats } = detail;
 
   return (
     <main className="page">
@@ -48,7 +48,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
         }
       />
 
-      <CampaignDetail campaign={campaign} leads={leads} mailboxes={mailboxes} activity={activity} />
+      <CampaignDetail campaign={campaign} leads={leads} mailboxes={mailboxes} activity={activity} stats={stats} />
     </main>
   );
 }

@@ -96,6 +96,8 @@ describe("backend wiring", () => {
     expect(signupRoute).toContain("workspace_members");
     expect(signupRoute).toContain("owner");
     expect(loginRoute).toContain("/auth/v1/token?grant_type=password");
+    expect(loginRoute).toContain("requireSupabaseAuthConfig");
+    expect(loginRoute).not.toContain("requireSupabaseConfig");
     expect(logoutRoute).toContain("ACCESS_COOKIE");
     expect(data).toContain("getAuthUser");
     expect(data).toContain("workspace_members");

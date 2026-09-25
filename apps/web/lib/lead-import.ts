@@ -22,11 +22,13 @@ export type RejectedLeadCsvRow = {
 };
 
 const HEADERS = LEAD_CSV_HEADER.split(",");
+const REQUIRED_HEADERS = ["name", "link", "company"];
 
 export function parseLeadCsv(text: string): { accepted: ParsedLeadCsvRow[]; rejected: RejectedLeadCsvRow[] } {
   const rows = parseCsv(text);
-  const header = rows.shift()?.map((cell) => cell.replace(/^\uFEFF/, "").trim()) ?? [];
-  if (header.join(",") !== LEAD_CSV_HEADER) throw new Error(`CSV header must be ${LEAD_CSV_HEADER}`);
+  const header = rows.shift()?.map((cell) => cell.replace(/^\uFEFF/, "").trim().toLowerCase()) ?? [];
+  const missing = REQUIRED_HEADERS.filter((key) => !header.includes(key));
+  if (missing.length) throw new Error(`CSV header must include ${REQUIRED_HEADERS.join(",")}`);
 
   const accepted: ParsedLeadCsvRow[] = [];
   const rejected: RejectedLeadCsvRow[] = [];
@@ -35,7 +37,7 @@ export function parseLeadCsv(text: string): { accepted: ParsedLeadCsvRow[]; reje
     const rowNumber = index + 2;
     if (cells.every((cell) => !cell.trim())) return;
 
-    const raw = Object.fromEntries(HEADERS.map((key, cellIndex) => [key, (cells[cellIndex] ?? "").trim()]));
+    const raw = Object.fromEntries(HEADERS.map((key) => [key, (cells[header.indexOf(key)] ?? "").trim()]));
     const name = raw.name ?? "";
     const company = raw.company || null;
     const linkedin = normalizeLinkedin(raw.link ?? "");

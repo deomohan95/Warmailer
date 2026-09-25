@@ -95,10 +95,13 @@ export function CampaignWizard({
   );
 
   const missingEmail = selectedLeads.filter((lead) => !lead.email && lead.emailStatus !== "suppressed");
+  const unverified = selectedLeads.filter(
+    (lead) => lead.email && lead.emailStatus !== "verified" && lead.emailStatus !== "suppressed",
+  );
   const suppressed = selectedLeads.filter((lead) => lead.emailStatus === "suppressed");
   const alreadyRunning = selectedLeads.filter((lead) => Boolean(lead.activeCampaignId));
   const eligible = selectedLeads.filter(
-    (lead) => Boolean(lead.email) && lead.emailStatus !== "suppressed" && !lead.activeCampaignId,
+    (lead) => Boolean(lead.email) && lead.emailStatus === "verified" && !lead.activeCampaignId,
   );
 
   const capacity = campaignDailyCapacity(selectedMailboxes);
@@ -279,6 +282,8 @@ export function CampaignWizard({
                     <dd>{eligible.length.toLocaleString()}</dd>
                     <dt>Skipped — no email</dt>
                     <dd>{missingEmail.length.toLocaleString()}</dd>
+                    <dt>Skipped — not verified</dt>
+                    <dd>{unverified.length.toLocaleString()}</dd>
                     <dt>Skipped — suppressed</dt>
                     <dd>{suppressed.length.toLocaleString()}</dd>
                     <dt>Skipped — already in an active campaign</dt>

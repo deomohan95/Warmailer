@@ -7,9 +7,9 @@ const CANONICAL_HEADERS = [
   "company",
   "link",
   "location",
-  "employees",
-  "industry",
 ];
+const REQUIRED_HEADERS = ["name", "link", "company"];
+const IGNORED_HEADERS = ["employees", "industry"];
 
 export function parseApolloCsv(csvText) {
   const records = parseCsvRecords(csvText);
@@ -18,13 +18,13 @@ export function parseApolloCsv(csvText) {
   }
 
   const headers = records[0].map((header, index) => normalizeHeader(index === 0 ? header.replace(/^\uFEFF/, "") : header));
-  const missing = CANONICAL_HEADERS.filter((header) => !headers.includes(header));
+  const missing = REQUIRED_HEADERS.filter((header) => !headers.includes(header));
   if (missing.length > 0) {
-    throw new Error(`missing canonical columns: ${missing.join(", ")}`);
+    throw new Error(`missing required columns: ${missing.join(", ")}`);
   }
 
   const warnings = headers
-    .filter((header) => header && !CANONICAL_HEADERS.includes(header))
+    .filter((header) => header && !CANONICAL_HEADERS.includes(header) && !IGNORED_HEADERS.includes(header))
     .map((header) => ({ type: "unknown_header", header }));
 
   const rows = [];

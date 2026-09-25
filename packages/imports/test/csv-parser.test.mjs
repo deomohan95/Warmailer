@@ -17,10 +17,19 @@ test("parses canonical Apollo CSV with BOM, whitespace, quoted commas, and reord
   assert.equal(result.rows[1].identityKey, "name_company:john smith|beta labs");
 });
 
+test("parses the short required lead CSV", () => {
+  const result = parseApolloCsv(
+    "name,link,company\nJane Doe,https://www.linkedin.com/in/jane-doe,Acme\n",
+  );
+
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.rows[0].linkedinUrlNormalized, "https://www.linkedin.com/in/jane-doe");
+});
+
 test("rejects missing canonical headers and unusable rows", () => {
   assert.throws(
-    () => parseApolloCsv("name,company,link\nJane,Acme,https://linkedin.com/in/jane\n"),
-    /missing canonical columns: source_file, job_title, location, employees, industry/,
+    () => parseApolloCsv("name,company\nJane,Acme\n"),
+    /missing required columns: link/,
   );
 
   const result = parseApolloCsv("source_file,name,job_title,company,link,location,employees,industry\napollo.csv,No Identity,CEO,,not-a-url,Remote,1-10,SaaS\n");

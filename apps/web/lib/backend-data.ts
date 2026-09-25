@@ -3,12 +3,14 @@ import { join } from "node:path";
 import { cookies } from "next/headers";
 import { cache } from "react";
 
-import { ACCESS_COOKIE, type AuthUser } from "./auth";
+import { ACCESS_COOKIE, authApiKey, supabaseAuthUrl, type AuthUser } from "./auth";
 import { ACTIVE_WORKSPACE, type ActiveWorkspace } from "./workspace";
 import type {
   Campaign,
   CampaignActivity,
+  CampaignDailyStats,
   CampaignEventType,
+  CampaignStats,
   InboxMessage,
   InboxThread,
   Lead,
@@ -50,7 +52,7 @@ type LeadRow = {
   employees: string | null;
   industry: string | null;
   email: string | null;
-  email_status: "not_enriched" | "queued" | "processing" | "found" | "not_found" | "failed";
+  email_status: "not_enriched" | "queued" | "processing" | "found" | "verified" | "not_found" | "failed";
   last_enriched_at?: string | null;
   created_at: string;
   updated_at: string;
@@ -153,6 +155,26 @@ type CampaignActivityRow = {
   updated_at: string;
 };
 
+type CampaignStatsRow = {
+  campaign_id: string;
+  workspace_id: string;
+  sent_count: number;
+  open_count: number;
+  reply_count: number;
+  bounce_count: number;
+  queued_count: number;
+  last_activity_at: string | null;
+};
+
+type CampaignDailyStatsRow = {
+  campaign_id: string;
+  workspace_id: string;
+  activity_date: string;
+  sent_count: number;
+  open_count: number;
+  reply_count: number;
+};
+
 type InboxThreadRow = {
   thread_id: string;
   workspace_id: string;
@@ -233,13 +255,25 @@ export function requireSupabaseConfig(env: Env = process.env): SupabaseConfig {
   if (!url) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL");
 
   const key =
-    envValue("SUPABASE_SERVICE_ROLE_KEY", env) ??
     envValue("SUPABASE_SECRET_KEY", env) ??
+    envValue("SUPABASE_SERVICE_ROLE_KEY", env) ??
     envValue("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", env) ??
     envValue("NEXT_PUBLIC_SUPABASE_ANON_KEY", env);
   if (!key) throw new Error("Missing Supabase API key");
 
   return { url: url.replace(/\/$/, ""), key };
+}
+
+export function requireSupabaseAuthConfig(env: Env = process.env): SupabaseConfig {
+  const authEnv = {
+    NEXT_PUBLIC_SUPABASE_URL: envValue("NEXT_PUBLIC_SUPABASE_URL", env),
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: envValue("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", env),
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: envValue("NEXT_PUBLIC_SUPABASE_ANON_KEY", env),
+    SUPABASE_SERVICE_ROLE_KEY: envValue("SUPABASE_SERVICE_ROLE_KEY", env),
+    SUPABASE_SECRET_KEY: envValue("SUPABASE_SECRET_KEY", env),
+  };
+
+  return { url: supabaseAuthUrl(authEnv), key: authApiKey(authEnv) };
 }
 
 async function cookieAccessToken(): Promise<string | undefined> {
@@ -254,7 +288,7 @@ export async function getAuthUser(accessToken?: string): Promise<AuthUser | null
   const token = accessToken ?? (await cookieAccessToken());
   if (!token) return null;
 
-  const { url, key } = requireSupabaseConfig();
+  const { url, key } = requireSupabaseAuthConfig();
   const response = await fetch(`${url}/auth/v1/user`, {
     cache: "no-store",
     headers: {
@@ -456,6 +490,30 @@ export function mapCampaignActivityRow(row: CampaignActivityRow): CampaignActivi
   };
 }
 
+export function mapCampaignStatsRow(row: CampaignStatsRow): CampaignStats {
+  return {
+    workspaceId: row.workspace_id,
+    campaignId: row.campaign_id,
+    sent: row.sent_count,
+    opened: row.open_count,
+    replied: row.reply_count,
+    bounced: row.bounce_count,
+    queued: row.queued_count,
+    lastActivityAt: row.last_activity_at,
+  };
+}
+
+export function mapCampaignDailyStatsRow(row: CampaignDailyStatsRow): CampaignDailyStats {
+  return {
+    workspaceId: row.workspace_id,
+    campaignId: row.campaign_id,
+    date: row.activity_date,
+    sent: row.sent_count,
+    opened: row.open_count,
+    replied: row.reply_count,
+  };
+}
+
 export function mapInboxThreadRow(row: InboxThreadRow): InboxThread {
   return {
     workspaceId: row.workspace_id,
@@ -528,15 +586,17 @@ export async function getDashboardData() {
       unread_thread_count: number;
     }[]
   >(`dashboard_overview?workspace_id=eq.${workspace.workspaceId}&select=*&limit=1`);
-  const [mailboxes, campaigns, activity, inboxThreads, messages] = await Promise.all([
+  const [mailboxes, campaigns, activity, campaignStats, campaignDailyStats, inboxThreads, messages] = await Promise.all([
     getMailboxes(workspace.workspaceId),
     getCampaigns(workspace.workspaceId),
     getCampaignActivity(workspace.workspaceId),
+    getCampaignStats(workspace.workspaceId),
+    getCampaignDailyStats(workspace.workspaceId),
     getInboxThreads(workspace.workspaceId),
     getInboxMessages(workspace.workspaceId),
   ]);
 
-  return { workspace, overview, mailboxes, campaigns, activity, inboxThreads, messages };
+  return { workspace, overview, mailboxes, campaigns, activity, campaignStats, campaignDailyStats, inboxThreads, messages };
 }
 
 export async function getLeads(workspaceId: string) {
@@ -576,7 +636,7 @@ export async function getCampaigns(workspaceId: string) {
 }
 
 export async function getCampaignDetail(workspaceId: string, campaignId: string) {
-  const [rows, sequenceRows, mailboxRows, campaignLeadRows, leadRows, mailboxes, activity] = await Promise.all([
+  const [rows, sequenceRows, mailboxRows, campaignLeadRows, leadRows, mailboxes, activity, statsRows] = await Promise.all([
     rest<CampaignDetailRow[]>(
       `campaign_detail?workspace_id=eq.${workspaceId}&campaign_id=eq.${campaignId}&select=*&limit=1`,
     ),
@@ -592,6 +652,7 @@ export async function getCampaignDetail(workspaceId: string, campaignId: string)
     rest<LeadRow[]>(`lead_list?workspace_id=eq.${workspaceId}&select=*&limit=500`),
     getMailboxes(workspaceId),
     getCampaignActivity(workspaceId, campaignId),
+    getCampaignStats(workspaceId, campaignId),
   ]);
 
   const row = rows[0];
@@ -609,7 +670,7 @@ export async function getCampaignDetail(workspaceId: string, campaignId: string)
   const selectedMailboxes = mailboxes.filter((mailbox) => mailboxIds.includes(mailbox.mailboxId));
   const leads = leadRows.filter((lead) => leadIds.has(lead.lead_id)).map((lead) => mapLeadRow(lead));
 
-  return { campaign, leads, mailboxes: selectedMailboxes, activity };
+  return { campaign, leads, mailboxes: selectedMailboxes, activity, stats: statsRows[0] };
 }
 
 export async function getCampaignActivity(workspaceId: string, campaignId?: string) {
@@ -618,6 +679,22 @@ export async function getCampaignActivity(workspaceId: string, campaignId?: stri
     `campaign_activity?workspace_id=eq.${workspaceId}${campaignFilter}&select=*&order=occurred_at.desc&limit=200`,
   );
   return rows.map(mapCampaignActivityRow);
+}
+
+export async function getCampaignStats(workspaceId: string, campaignId?: string) {
+  const campaignFilter = campaignId ? `&campaign_id=eq.${campaignId}` : "";
+  const rows = await rest<CampaignStatsRow[]>(
+    `campaign_stats?workspace_id=eq.${workspaceId}${campaignFilter}&select=*&order=last_activity_at.desc`,
+  );
+  return rows.map(mapCampaignStatsRow);
+}
+
+export async function getCampaignDailyStats(workspaceId: string, campaignId?: string) {
+  const campaignFilter = campaignId ? `&campaign_id=eq.${campaignId}` : "";
+  const rows = await rest<CampaignDailyStatsRow[]>(
+    `campaign_daily_stats?workspace_id=eq.${workspaceId}${campaignFilter}&select=*&order=activity_date.asc`,
+  );
+  return rows.map(mapCampaignDailyStatsRow);
 }
 
 export async function getInboxThreads(workspaceId: string) {

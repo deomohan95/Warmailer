@@ -13,6 +13,7 @@ const STATUS_ORDER: LeadStatus[] = [
   "queued",
   "processing",
   "email_found",
+  "verified",
   "not_found",
   "failed",
   "suppressed",
@@ -61,6 +62,9 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
   const [enriching, setEnriching] = useState(false);
   const [enrichmentMessage, setEnrichmentMessage] = useState<string | null>(null);
   const [enrichmentError, setEnrichmentError] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const [verificationMessage, setVerificationMessage] = useState<string | null>(null);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
 
   const industries = useMemo(() => unique(leads.map((lead) => lead.industry)), [leads]);
   const locations = useMemo(() => unique(leads.map((lead) => lead.location)), [leads]);
@@ -72,7 +76,7 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
   const uploadStats = useMemo(
     () => ({
       total: uploadLeads.length,
-      found: uploadLeads.filter((lead) => lead.emailStatus === "email_found").length,
+      found: uploadLeads.filter((lead) => lead.emailStatus === "email_found" || lead.emailStatus === "verified").length,
       inFlight: uploadLeads.filter((lead) => lead.emailStatus === "queued" || lead.emailStatus === "processing").length,
       notFound: uploadLeads.filter((lead) => lead.emailStatus === "not_found").length,
       eligible: uploadLeads.filter(isEnrichable).length,
@@ -96,8 +100,9 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
 
   const selection = allFilteredSelected ? filtered : filtered.filter((lead) => selectedIds.includes(lead.leadId));
   const eligible = selection.filter(isEnrichable);
+  const verifyReady = selection.filter((lead) => Boolean(lead.email) && lead.emailStatus === "email_found");
   const campaignReady = selection.filter(
-    (lead) => Boolean(lead.email) && lead.emailStatus === "email_found" && !lead.activeCampaignId,
+    (lead) => Boolean(lead.email) && lead.emailStatus === "verified" && !lead.activeCampaignId,
   );
   const skippedHasEmail = selection.filter((lead) => Boolean(lead.email));
   const skippedSuppressed = selection.filter((lead) => lead.emailStatus === "suppressed");
@@ -159,6 +164,8 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
     setEnriching(true);
     setEnrichmentMessage(null);
     setEnrichmentError(null);
+    setVerificationMessage(null);
+    setVerificationError(null);
 
     const response = await fetch("/api/enrichment-batches", {
       method: "POST",
@@ -177,8 +184,37 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
       return;
     }
 
-    setEnrichmentMessage(
-      `Batch ${result?.batchId}: ${result?.queued ?? 0} queued, ${result?.skipped ?? 0} skipped.`,
+    setEnrichmentMessage(`In process: batch ${result?.batchId}, ${result?.queued ?? 0} queued, ${result?.skipped ?? 0} skipped.`);
+    clearSelection();
+    router.refresh();
+  }
+
+  async function verifyEmails() {
+    setVerifying(true);
+    setVerificationMessage(null);
+    setVerificationError(null);
+    setEnrichmentMessage(null);
+    setEnrichmentError(null);
+
+    const response = await fetch("/api/email-verification", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ leadIds: verifyReady.map((lead) => lead.leadId) }),
+    });
+
+    setVerifying(false);
+
+    const result = (await response.json().catch(() => null)) as
+      | { verified?: number; notVerified?: number; failed?: number; skipped?: number; error?: string }
+      | null;
+
+    if (!response.ok) {
+      setVerificationError(result?.error ?? "Email verification failed");
+      return;
+    }
+
+    setVerificationMessage(
+      `${result?.verified ?? 0} verified, ${result?.notVerified ?? 0} not verified, ${result?.failed ?? 0} failed, ${result?.skipped ?? 0} skipped.`,
     );
     clearSelection();
     router.refresh();
@@ -195,7 +231,14 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
       <input id="lead-csv-file" type="file" accept=".csv,text/csv" onChange={importCsv} hidden />
 
       <div className="workspace-full">
-        {importError || importMessage || importing || enrichmentError || enrichmentMessage ? (
+        {importError ||
+        importMessage ||
+        importing ||
+        enrichmentError ||
+        enrichmentMessage ||
+        verificationError ||
+        verificationMessage ||
+        verifying ? (
           <div className="stack workspace-notices">
             {importError ? (
               <Notice tone="warning" icon={<IconUpload />}>
@@ -224,6 +267,24 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
             {enrichmentMessage ? (
               <Notice tone="accent" icon={<IconLeads />}>
                 Email finding queued: {enrichmentMessage}
+              </Notice>
+            ) : null}
+
+            {verificationError ? (
+              <Notice tone="warning" icon={<IconLeads />}>
+                {verificationError}
+              </Notice>
+            ) : null}
+
+            {verifying ? (
+              <Notice tone="accent" icon={<IconLeads />}>
+                Email verification in process...
+              </Notice>
+            ) : null}
+
+            {verificationMessage ? (
+              <Notice tone="accent" icon={<IconLeads />}>
+                Email verification complete: {verificationMessage}
               </Notice>
             ) : null}
           </div>
@@ -328,6 +389,7 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
             <span>selected</span>
             <span className="subtle">
               {eligible.length.toLocaleString()} eligible for enrichment ·{" "}
+              {verifyReady.length.toLocaleString()} ready to verify ·{" "}
               {skippedHasEmail.length.toLocaleString()} already have an email ·{" "}
               {skippedSuppressed.length.toLocaleString()} suppressed
             </span>
@@ -345,9 +407,14 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
                 Create campaign for {campaignReady.length.toLocaleString()}
               </button>
             ) : null}
+            {verifyReady.length > 0 ? (
+              <button type="button" className="btn btn-primary" onClick={verifyEmails} disabled={verifying}>
+                {verifying ? "Verifying..." : `Verify emails for ${verifyReady.length.toLocaleString()}`}
+              </button>
+            ) : null}
             {eligible.length > 0 ? (
               <button type="button" className="btn btn-primary" onClick={findEmails} disabled={enriching}>
-                {enriching ? "Queuing..." : `Find emails for ${eligible.length.toLocaleString()}`}
+                {enriching ? "Email finding in process..." : `Find emails for ${eligible.length.toLocaleString()}`}
               </button>
             ) : null}
           </div>

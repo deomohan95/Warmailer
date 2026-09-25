@@ -11,7 +11,12 @@ export function primaryActorInput(linkedinUrlNormalized) {
 export function fallbackActorInput(items) {
   return {
     actorId: FALLBACK_ACTOR_ID,
-    input: { linkedinUrls: items.map((item) => item.linkedinUrlNormalized) },
+    input: {
+      linkedinUrls: items.map((item) => item.linkedinUrlNormalized),
+      includeWorkEmails: true,
+      includePersonalEmails: true,
+      onlyWithEmails: true,
+    },
   };
 }
 

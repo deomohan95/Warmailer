@@ -158,7 +158,7 @@ function supabaseDb(config, fetchImpl) {
         .slice(0, limit);
       const ids = dueRows.map((row) => row.lead_id);
       if (ids.length === 0) return [];
-      const leads = await get(`all_leads_mmp?id=in.(${ids.join(",")})&email_status=eq.found&select=id,name,company,job_title,email`);
+      const leads = await get(`all_leads_mmp?id=in.(${ids.join(",")})&email_status=eq.verified&select=id,name,company,job_title,email`);
       const byId = new Map(leads.map((lead) => [lead.id, lead]));
       return dueRows.flatMap((row) => {
         const lead = byId.get(row.lead_id);
@@ -169,7 +169,7 @@ function supabaseDb(config, fetchImpl) {
       const rows = await get(`campaign_leads?campaign_id=eq.${campaignId}&status=in.(selected,queued)&select=id,lead_id&order=created_at.asc&limit=${limit}`);
       const ids = rows.map((row) => row.lead_id);
       if (ids.length === 0) return [];
-      const leads = await get(`all_leads_mmp?id=in.(${ids.join(",")})&email_status=eq.found&select=id,name,company,job_title,email`);
+      const leads = await get(`all_leads_mmp?id=in.(${ids.join(",")})&email_status=eq.verified&select=id,name,company,job_title,email`);
       const byId = new Map(leads.map((lead) => [lead.id, lead]));
       return rows.flatMap((row) => {
         const lead = byId.get(row.lead_id);
