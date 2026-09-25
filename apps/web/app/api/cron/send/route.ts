@@ -65,7 +65,7 @@ export async function GET(request: Request) {
 
 export function loadSendConfig(env: Record<string, string | undefined> = process.env): SendConfig {
   const supabaseUrl = envValue("NEXT_PUBLIC_SUPABASE_URL", env)?.replace(/\/$/, "");
-  const supabaseKey = envValue("SUPABASE_SERVICE_ROLE_KEY", env) ?? envValue("SUPABASE_SECRET_KEY", env);
+  const supabaseKey = envValue("SUPABASE_SECRET_KEY", env) ?? envValue("SUPABASE_SERVICE_ROLE_KEY", env);
   const trackingBaseUrl = envValue("TRACKING_BASE_URL", env)?.replace(/\/$/, "");
   const config = {
     supabaseUrl,

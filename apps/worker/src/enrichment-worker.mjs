@@ -12,7 +12,7 @@ export function loadEnrichmentConfig(env = process.env) {
   const value = (name) => env[name] ?? local[name];
   const config = {
     supabaseUrl: value("NEXT_PUBLIC_SUPABASE_URL")?.replace(/\/$/, ""),
-    supabaseKey: value("SUPABASE_SERVICE_ROLE_KEY") ?? value("SUPABASE_SECRET_KEY"),
+    supabaseKey: value("SUPABASE_SECRET_KEY") ?? value("SUPABASE_SERVICE_ROLE_KEY"),
     apifyToken: value("APIFY_TOKEN") ?? value("APIFY_API_TOKEN"),
     primaryActorId: value("APIFY_LINKEDIN_EMAIL_FINDER_ACTOR_ID") ?? value("APIFY_PRIMARY_ACTOR_ID") ?? PRIMARY_ACTOR_ID,
     primaryInputKey: value("APIFY_PRIMARY_INPUT_KEY") ?? "linkedin",

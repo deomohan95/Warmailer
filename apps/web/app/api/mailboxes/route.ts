@@ -181,7 +181,7 @@ function validateUpdate(input: MailboxUpdateInput) {
 
 async function supabasePost(table: string, body: unknown) {
   const url = envValue("NEXT_PUBLIC_SUPABASE_URL")?.replace(/\/$/, "");
-  const key = envValue("SUPABASE_SERVICE_ROLE_KEY") ?? envValue("SUPABASE_SECRET_KEY");
+  const key = envValue("SUPABASE_SECRET_KEY") ?? envValue("SUPABASE_SERVICE_ROLE_KEY");
   if (!url) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL");
   if (!key) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
 
@@ -210,7 +210,7 @@ async function supabasePost(table: string, body: unknown) {
 
 async function supabasePatch(path: string, body: unknown) {
   const url = envValue("NEXT_PUBLIC_SUPABASE_URL")?.replace(/\/$/, "");
-  const key = envValue("SUPABASE_SERVICE_ROLE_KEY") ?? envValue("SUPABASE_SECRET_KEY");
+  const key = envValue("SUPABASE_SECRET_KEY") ?? envValue("SUPABASE_SERVICE_ROLE_KEY");
   if (!url) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL");
   if (!key) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
 

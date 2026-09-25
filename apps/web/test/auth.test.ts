@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { loginIdentifierToEmail, MYMAIDSPRO_LOGIN_EMAIL, refreshSupabaseSession } from "../lib/auth";
+import { authApiKey, loginIdentifierToEmail, MYMAIDSPRO_LOGIN_EMAIL, refreshSupabaseSession } from "../lib/auth";
 
 describe("auth login identifiers", () => {
   it("maps the MyMaidsPro username to the Supabase auth email", () => {
@@ -9,6 +9,16 @@ describe("auth login identifiers", () => {
 
   it("leaves real email addresses usable for future client accounts", () => {
     expect(loginIdentifierToEmail("owner@example.com")).toBe("owner@example.com");
+  });
+
+  it("uses the Supabase secret key before legacy anon/service keys", () => {
+    expect(
+      authApiKey({
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: "bad-anon",
+        SUPABASE_SERVICE_ROLE_KEY: "legacy-service",
+        SUPABASE_SECRET_KEY: "working-secret",
+      }),
+    ).toBe("working-secret");
   });
 
   it("refreshes an access token from a refresh token", async () => {

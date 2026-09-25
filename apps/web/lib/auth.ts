@@ -40,10 +40,10 @@ export function supabaseAuthUrl(env: Env = process.env): string {
 
 export function authApiKey(env: Env = process.env): string {
   const key =
-    env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+    env.SUPABASE_SECRET_KEY ??
     env.SUPABASE_SERVICE_ROLE_KEY ??
-    env.SUPABASE_SECRET_KEY;
+    env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!key) throw new Error("Missing Supabase API key");
   return key;
 }

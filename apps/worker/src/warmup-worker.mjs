@@ -204,7 +204,7 @@ export function loadWarmupConfig(env = process.env) {
   const value = (name) => env[name] ?? local[name];
   const config = {
     supabaseUrl: value("NEXT_PUBLIC_SUPABASE_URL")?.replace(/\/$/, ""),
-    supabaseKey: value("SUPABASE_SERVICE_ROLE_KEY") ?? value("SUPABASE_SECRET_KEY"),
+    supabaseKey: value("SUPABASE_SECRET_KEY") ?? value("SUPABASE_SERVICE_ROLE_KEY"),
     encryptionKey: Buffer.from(value("WORKER_ENCRYPTION_KEY") ?? "", "base64"),
     composioApiKey: value("COMPOSIO_API_KEY") ?? value("Composio_api_key"),
     smtpHost: value("ZOHO_SMTP_HOST") ?? "smtp.zoho.com",
