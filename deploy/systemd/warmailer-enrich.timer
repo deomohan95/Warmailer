@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Warmailer lead enrichment worker every 2 minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=2min
+AccuracySec=10s
+Persistent=true
+Unit=warmailer-enrich.service
+
+[Install]
+WantedBy=timers.target
