@@ -327,6 +327,17 @@ async function rest<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function restAll<T>(path: string, pageSize = 1000): Promise<T[]> {
+  const rows: T[] = [];
+
+  for (let offset = 0; ; offset += pageSize) {
+    const separator = path.includes("?") ? "&" : "?";
+    const page = await rest<T[]>(`${path}${separator}limit=${pageSize}&offset=${offset}`);
+    rows.push(...page);
+    if (page.length < pageSize) return rows;
+  }
+}
+
 function cleanTime(value: string): string {
   return value.slice(0, 5);
 }
@@ -601,9 +612,9 @@ export async function getDashboardData() {
 
 export async function getLeads(workspaceId: string) {
   const [rows, links] = await Promise.all([
-    rest<LeadRow[]>(`lead_list?workspace_id=eq.${workspaceId}&select=*&order=created_at.desc&limit=500`),
-    rest<LeadImportLinkRow[]>(
-      `lead_import_rows?workspace_id=eq.${workspaceId}&action=in.(inserted,updated)&select=lead_id,import_id&limit=5000`,
+    restAll<LeadRow>(`lead_list?workspace_id=eq.${workspaceId}&select=*&order=created_at.desc`),
+    restAll<LeadImportLinkRow>(
+      `lead_import_rows?workspace_id=eq.${workspaceId}&action=in.(inserted,updated)&select=lead_id,import_id`,
     ),
   ]);
   const byLead = new Map<string, string[]>();

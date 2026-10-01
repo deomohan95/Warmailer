@@ -153,6 +153,15 @@ describe("backend wiring", () => {
     expect(component).toContain("Upload overview");
   });
 
+  it("loads all lead rows and import links instead of hiding older uploads behind a fixed cap", async () => {
+    const data = await source("lib/backend-data.ts");
+
+    expect(data).toContain("restAll<LeadRow>");
+    expect(data).toContain("restAll<LeadImportLinkRow>");
+    expect(data).not.toContain("lead_list?workspace_id=eq.${workspaceId}&select=*&order=created_at.desc&limit=500");
+    expect(data).not.toContain("lead_import_rows?workspace_id=eq.${workspaceId}&action=in.(inserted,updated)&select=lead_id,import_id&limit=5000");
+  });
+
   it("can open the campaign builder with selected found leads preloaded", async () => {
     const leads = await source("components/leads/leads-workspace.tsx");
     const page = await source("app/(app)/campaigns/new/page.tsx");
