@@ -338,6 +338,17 @@ async function restAll<T>(path: string, pageSize = 1000): Promise<T[]> {
   }
 }
 
+async function restLeadListByIds(workspaceId: string, leadIds: string[], pageSize = 200): Promise<LeadRow[]> {
+  const rows: LeadRow[] = [];
+
+  for (let offset = 0; offset < leadIds.length; offset += pageSize) {
+    const ids = leadIds.slice(offset, offset + pageSize).join(",");
+    rows.push(...(await rest<LeadRow[]>(`lead_list?workspace_id=eq.${workspaceId}&lead_id=in.(${ids})&select=*`)));
+  }
+
+  return rows;
+}
+
 function cleanTime(value: string): string {
   return value.slice(0, 5);
 }
@@ -647,7 +658,7 @@ export async function getCampaigns(workspaceId: string) {
 }
 
 export async function getCampaignDetail(workspaceId: string, campaignId: string) {
-  const [rows, sequenceRows, mailboxRows, campaignLeadRows, leadRows, mailboxes, activity, statsRows] = await Promise.all([
+  const [rows, sequenceRows, mailboxRows, campaignLeadRows, mailboxes, activity, statsRows] = await Promise.all([
     rest<CampaignDetailRow[]>(
       `campaign_detail?workspace_id=eq.${workspaceId}&campaign_id=eq.${campaignId}&select=*&limit=1`,
     ),
@@ -660,7 +671,6 @@ export async function getCampaignDetail(workspaceId: string, campaignId: string)
     rest<CampaignLeadRow[]>(
       `campaign_leads?workspace_id=eq.${workspaceId}&campaign_id=eq.${campaignId}&select=lead_id`,
     ),
-    rest<LeadRow[]>(`lead_list?workspace_id=eq.${workspaceId}&select=*&limit=500`),
     getMailboxes(workspaceId),
     getCampaignActivity(workspaceId, campaignId),
     getCampaignStats(workspaceId, campaignId),
@@ -677,6 +687,7 @@ export async function getCampaignDetail(workspaceId: string, campaignId: string)
   }));
   const mailboxIds = mailboxRows.map((mailbox) => mailbox.mailbox_id);
   const leadIds = new Set(campaignLeadRows.map((lead) => lead.lead_id));
+  const leadRows = await restLeadListByIds(workspaceId, [...leadIds]);
   const campaign = mapCampaignDetail(row, sequence, mailboxIds, campaignLeadRows.length);
   const selectedMailboxes = mailboxes.filter((mailbox) => mailboxIds.includes(mailbox.mailboxId));
   const leads = leadRows.filter((lead) => leadIds.has(lead.lead_id)).map((lead) => mapLeadRow(lead));

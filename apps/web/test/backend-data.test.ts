@@ -209,6 +209,91 @@ describe("backend data mapping", () => {
     });
   });
 
+  it("loads campaign detail leads directly from campaign lead ids instead of a capped global lead page", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://project.supabase.co");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes("/rest/v1/campaign_detail?")) {
+          return Response.json([
+            {
+              campaign_id: "campaign_1",
+              workspace_id: "workspace_1",
+              name: "Owners",
+              status: "sending",
+              timezone: "America/New_York",
+              start_date: "2026-10-01",
+              sending_days: [1, 2, 3, 4, 5],
+              sending_window_start: "00:00:00",
+              sending_window_end: "23:59:00",
+              per_mailbox_delay_seconds: 120,
+              max_sends_per_day: 300,
+              created_at: "2026-10-01T00:00:00.000Z",
+              updated_at: "2026-10-01T00:00:00.000Z",
+              last_activity_at: null,
+            },
+          ]);
+        }
+        if (url.includes("/rest/v1/campaign_sequence_steps?")) return Response.json([]);
+        if (url.includes("/rest/v1/campaign_mailboxes?")) return Response.json([]);
+        if (url.includes("/rest/v1/campaign_leads?")) {
+          return Response.json([{ lead_id: "lead_visible" }, { lead_id: "lead_hidden" }]);
+        }
+        if (url.includes("/rest/v1/lead_list?") && url.includes("lead_id=in.(lead_visible,lead_hidden)")) {
+          return Response.json([
+            {
+              lead_id: "lead_visible",
+              workspace_id: "workspace_1",
+              source_file: "delaware.csv",
+              name: "Visible Lead",
+              job_title: "Manager",
+              company: "Visible Co",
+              link: null,
+              location: "Delaware",
+              employees: null,
+              industry: null,
+              email: "visible@example.com",
+              email_status: "verified",
+              created_at: "2026-10-01T00:00:00.000Z",
+              updated_at: "2026-10-01T00:00:00.000Z",
+            },
+            {
+              lead_id: "lead_hidden",
+              workspace_id: "workspace_1",
+              source_file: "delaware.csv",
+              name: "Hidden Lead",
+              job_title: "Director",
+              company: "Hidden Co",
+              link: null,
+              location: "Delaware",
+              employees: null,
+              industry: null,
+              email: "hidden@example.com",
+              email_status: "verified",
+              created_at: "2026-10-01T00:00:00.000Z",
+              updated_at: "2026-10-01T00:00:00.000Z",
+            },
+          ]);
+        }
+        if (url.includes("/rest/v1/mailbox_capacity?")) return Response.json([]);
+        if (url.includes("/rest/v1/campaign_activity?")) return Response.json([]);
+        if (url.includes("/rest/v1/campaign_stats?")) return Response.json([]);
+        return Response.json([]);
+      }),
+    );
+
+    const detail = await getCampaignDetail("workspace_1", "campaign_1");
+
+    expect(detail?.campaign.selectedLeadCount).toBe(2);
+    expect(detail?.leads.map((lead) => lead.leadId).sort()).toEqual(["lead_hidden", "lead_visible"]);
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("lead_list?workspace_id=eq.workspace_1&lead_id=in.(lead_visible,lead_hidden)"),
+      expect.any(Object),
+    );
+  });
+
   it("loads campaign stats from aggregate views instead of the recent activity feed", async () => {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://project.supabase.co");
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key");
