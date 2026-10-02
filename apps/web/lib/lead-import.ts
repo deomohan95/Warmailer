@@ -21,6 +21,11 @@ export type RejectedLeadCsvRow = {
   reason: string;
 };
 
+export type LeadImportLinkLookupRow = {
+  import_id: string;
+  lead_id: string | null;
+};
+
 const HEADERS = LEAD_CSV_HEADER.split(",");
 const REQUIRED_HEADERS = ["name", "link", "company"];
 
@@ -65,6 +70,40 @@ export function parseLeadCsv(text: string): { accepted: ParsedLeadCsvRow[]; reje
   });
 
   return { accepted, rejected };
+}
+
+export function duplicateImportIdForLeadIds(rows: LeadImportLinkLookupRow[], leadIds: string[]): string | null {
+  const expected = new Set(leadIds);
+  if (expected.size === 0) return null;
+
+  const byImport = new Map<string, Set<string>>();
+  for (const row of rows) {
+    if (!row.lead_id || !expected.has(row.lead_id)) continue;
+    const leadSet = byImport.get(row.import_id) ?? new Set<string>();
+    leadSet.add(row.lead_id);
+    byImport.set(row.import_id, leadSet);
+  }
+
+  for (const [importId, importedLeadIds] of byImport) {
+    if (importedLeadIds.size === expected.size) return importId;
+  }
+
+  return null;
+}
+
+export function leadUpdatePatch(lead: ParsedLeadCsvRow, updatedAt: string) {
+  return {
+    name: lead.name,
+    job_title: lead.job_title,
+    company: lead.company,
+    link: lead.link,
+    linkedin_url_normalized: lead.linkedin_url_normalized,
+    name_company_normalized: lead.name_company_normalized,
+    location: lead.location,
+    employees: lead.employees,
+    industry: lead.industry,
+    updated_at: updatedAt,
+  };
 }
 
 function parseCsv(text: string): string[][] {

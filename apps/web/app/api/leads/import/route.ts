@@ -4,7 +4,14 @@ import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { envValue, getActiveWorkspace } from "@/lib/backend-data";
-import { parseLeadCsv, type ParsedLeadCsvRow, type RejectedLeadCsvRow } from "@/lib/lead-import";
+import {
+  duplicateImportIdForLeadIds,
+  leadUpdatePatch,
+  parseLeadCsv,
+  type LeadImportLinkLookupRow,
+  type ParsedLeadCsvRow,
+  type RejectedLeadCsvRow,
+} from "@/lib/lead-import";
 
 export const runtime = "nodejs";
 
@@ -20,6 +27,36 @@ export async function POST(request: Request) {
     let inserted = 0;
     let updated = 0;
     const rows: ImportRowInsert[] = [];
+    const resolvedLeads: ResolvedLead[] = [];
+
+    for (const lead of parsed.accepted) {
+      const existing = await findLead(workspace.workspaceId, lead);
+      resolvedLeads.push({
+        lead,
+        leadId: existing?.id ?? randomUUID(),
+        action: existing ? "updated" : "inserted",
+      });
+    }
+
+    const duplicateImportId =
+      parsed.rejected.length === 0 && resolvedLeads.length > 0 && resolvedLeads.every((lead) => lead.action === "updated")
+        ? await findExistingImportForLeadIds(
+            workspace.workspaceId,
+            resolvedLeads.map((lead) => lead.leadId),
+          )
+        : null;
+
+    if (duplicateImportId) {
+      for (const item of resolvedLeads) {
+        await supabasePatch(`all_leads_mmp?id=eq.${item.leadId}&workspace_id=eq.${workspace.workspaceId}`, leadUpdatePatch(item.lead, now));
+      }
+
+      revalidatePath("/");
+      revalidatePath("/leads");
+      revalidatePath("/campaigns/new");
+
+      return NextResponse.json({ importId: duplicateImportId, inserted: 0, updated: resolvedLeads.length, rejected: 0, merged: true });
+    }
 
     await supabasePost("lead_imports", {
       id: importId,
@@ -35,48 +72,32 @@ export async function POST(request: Request) {
       completed_at: now,
     });
 
-    for (const lead of parsed.accepted) {
-      const existing = await findLead(workspace.workspaceId, lead);
-      const leadId = existing?.id ?? randomUUID();
-      const action = existing ? "updated" : "inserted";
-
-      if (existing) {
+    for (const item of resolvedLeads) {
+      if (item.action === "updated") {
         updated += 1;
-        await supabasePatch(`all_leads_mmp?id=eq.${leadId}&workspace_id=eq.${workspace.workspaceId}`, {
-          source_file: lead.source_file ?? file.name,
-          name: lead.name,
-          job_title: lead.job_title,
-          company: lead.company,
-          link: lead.link,
-          linkedin_url_normalized: lead.linkedin_url_normalized,
-          name_company_normalized: lead.name_company_normalized,
-          location: lead.location,
-          employees: lead.employees,
-          industry: lead.industry,
-          updated_at: now,
-        });
+        await supabasePatch(`all_leads_mmp?id=eq.${item.leadId}&workspace_id=eq.${workspace.workspaceId}`, leadUpdatePatch(item.lead, now));
       } else {
         inserted += 1;
         await supabasePost("all_leads_mmp", {
-          id: leadId,
+          id: item.leadId,
           workspace_id: workspace.workspaceId,
-          source_file: lead.source_file ?? file.name,
-          name: lead.name,
-          job_title: lead.job_title,
-          company: lead.company,
-          link: lead.link,
-          linkedin_url_normalized: lead.linkedin_url_normalized,
-          name_company_normalized: lead.name_company_normalized,
-          location: lead.location,
-          employees: lead.employees,
-          industry: lead.industry,
+          source_file: item.lead.source_file ?? file.name,
+          name: item.lead.name,
+          job_title: item.lead.job_title,
+          company: item.lead.company,
+          link: item.lead.link,
+          linkedin_url_normalized: item.lead.linkedin_url_normalized,
+          name_company_normalized: item.lead.name_company_normalized,
+          location: item.lead.location,
+          employees: item.lead.employees,
+          industry: item.lead.industry,
           email_status: "not_enriched",
           created_at: now,
           updated_at: now,
         });
       }
 
-      rows.push(importRow(workspace.workspaceId, importId, lead, leadId, action));
+      rows.push(importRow(workspace.workspaceId, importId, item.lead, item.leadId, item.action));
     }
 
     rows.push(...parsed.rejected.map((row) => rejectedRow(workspace.workspaceId, importId, row)));
@@ -99,6 +120,11 @@ export async function POST(request: Request) {
 }
 
 type ExistingLeadRow = { id: string };
+type ResolvedLead = {
+  lead: ParsedLeadCsvRow;
+  leadId: string;
+  action: "inserted" | "updated";
+};
 type ImportRowInsert = {
   workspace_id: string;
   import_id: string;
@@ -128,6 +154,24 @@ async function findLead(workspaceId: string, lead: ParsedLeadCsvRow) {
     )}&select=id&limit=1`,
   );
   return rows[0] ?? null;
+}
+
+async function findExistingImportForLeadIds(workspaceId: string, leadIds: string[]) {
+  const rows: LeadImportLinkLookupRow[] = [];
+  for (const ids of chunked(leadIds, 100)) {
+    rows.push(
+      ...(await supabaseGet<LeadImportLinkLookupRow[]>(
+        `lead_import_rows?workspace_id=eq.${workspaceId}&lead_id=in.(${ids.join(",")})&action=in.(inserted,updated)&select=lead_id,import_id`,
+      )),
+    );
+  }
+  return duplicateImportIdForLeadIds(rows, leadIds);
+}
+
+function chunked<T>(items: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) chunks.push(items.slice(index, index + size));
+  return chunks;
 }
 
 function importRow(
