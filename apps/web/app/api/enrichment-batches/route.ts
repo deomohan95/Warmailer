@@ -23,9 +23,7 @@ export async function POST(request: Request) {
   try {
     const leadIds = validateLeadIds((await request.json())?.leadIds);
     const workspace = await getActiveWorkspace();
-    const leads = await supabaseGet<LeadRow[]>(
-      `all_leads_mmp?workspace_id=eq.${workspace.workspaceId}&id=in.(${leadIds.map(encodeURIComponent).join(",")})&select=id,email,email_status,linkedin_url_normalized`,
-    );
+    const leads = await getEnrichmentLeads(workspace.workspaceId, leadIds);
     const eligible = leads.filter(
       (lead) =>
         !lead.email &&
@@ -60,10 +58,7 @@ export async function POST(request: Request) {
       })),
     );
 
-    await supabasePatch(`all_leads_mmp?workspace_id=eq.${workspace.workspaceId}&id=in.(${eligible.map((lead) => encodeURIComponent(lead.id)).join(",")})`, {
-      email_status: "queued",
-      updated_at: now,
-    });
+    await patchEnrichmentLeadsQueued(workspace.workspaceId, eligible.map((lead) => lead.id), now);
 
     revalidatePath("/");
     revalidatePath("/leads");
@@ -85,6 +80,36 @@ export function triggerImmediateEnrichment(run: EnrichmentRunner = processQueued
       console.error("Immediate enrichment failed", error);
     }
   });
+}
+
+export function enrichmentLeadLookupPaths(workspaceId: string, leadIds: string[], chunkSize = 100) {
+  return chunked(leadIds, chunkSize).map(
+    (ids) =>
+      `all_leads_mmp?workspace_id=eq.${workspaceId}&id=in.(${ids.map(encodeURIComponent).join(",")})&select=id,email,email_status,linkedin_url_normalized`,
+  );
+}
+
+async function getEnrichmentLeads(workspaceId: string, leadIds: string[]) {
+  const rows: LeadRow[] = [];
+  for (const path of enrichmentLeadLookupPaths(workspaceId, leadIds)) {
+    rows.push(...(await supabaseGet<LeadRow[]>(path)));
+  }
+  return rows;
+}
+
+async function patchEnrichmentLeadsQueued(workspaceId: string, leadIds: string[], updatedAt: string) {
+  for (const ids of chunked(leadIds, 100)) {
+    await supabasePatch(`all_leads_mmp?workspace_id=eq.${workspaceId}&id=in.(${ids.map(encodeURIComponent).join(",")})`, {
+      email_status: "queued",
+      updated_at: updatedAt,
+    });
+  }
+}
+
+function chunked<T>(items: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) chunks.push(items.slice(index, index + size));
+  return chunks;
 }
 
 function validateLeadIds(value: unknown): string[] {

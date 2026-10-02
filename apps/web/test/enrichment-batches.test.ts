@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { triggerImmediateEnrichment } from "../app/api/enrichment-batches/route";
+import { enrichmentLeadLookupPaths, triggerImmediateEnrichment } from "../app/api/enrichment-batches/route";
 import { verificationCandidates } from "../app/api/email-verification/route";
 
 describe("enrichment batches", () => {
@@ -13,6 +13,15 @@ describe("enrichment batches", () => {
     expect(tasks).toHaveLength(1);
     await tasks[0]!();
     expect(run).toHaveBeenCalledOnce();
+  });
+
+  it("chunks large find-email selections so Supabase URLs stay below Node header limits", () => {
+    const leadIds = Array.from({ length: 500 }, (_, index) => `00000000-0000-4000-8000-${index.toString().padStart(12, "0")}`);
+    const paths = enrichmentLeadLookupPaths("workspace_1", leadIds);
+
+    expect(paths.length).toBeGreaterThan(1);
+    expect(paths.flatMap((path) => path.match(/00000000-0000-4000-8000-\d{12}/g) ?? [])).toEqual(leadIds);
+    expect(Math.max(...paths.map((path) => path.length))).toBeLessThan(8000);
   });
 });
 
