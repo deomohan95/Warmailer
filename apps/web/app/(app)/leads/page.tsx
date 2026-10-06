@@ -5,9 +5,14 @@ import { getActiveWorkspace, getImports, getLeads } from "@/lib/backend-data";
 
 export const metadata = { title: "Leads · Warmailer" };
 
-export default async function LeadsPage() {
+type LeadsSearchParams = Promise<{ importId?: string | string[] }>;
+
+export default async function LeadsPage({ searchParams }: { searchParams?: LeadsSearchParams }) {
+  const params = searchParams ? await searchParams : {};
+  const initialImportId = Array.isArray(params.importId) ? params.importId[0] : params.importId;
   const workspace = await getActiveWorkspace();
   const [leads, leadImports] = await Promise.all([getLeads(workspace.workspaceId), getImports(workspace.workspaceId)]);
+  const selectedImportId = leadImports.some((item) => item.importId === initialImportId) ? initialImportId : undefined;
 
   return (
     <main className="page page-fit">
@@ -20,7 +25,7 @@ export default async function LeadsPage() {
           </label>
         }
       />
-      <LeadsWorkspace leads={leads} imports={leadImports} />
+      <LeadsWorkspace key={selectedImportId ?? "all"} leads={leads} imports={leadImports} initialImportId={selectedImportId} />
     </main>
   );
 }

@@ -146,9 +146,14 @@ describe("backend wiring", () => {
   });
 
   it("lets leads be filtered and summarized by upload", async () => {
+    const page = await source("app/(app)/leads/page.tsx");
     const component = await source("components/leads/leads-workspace.tsx");
 
+    expect(page).toContain("searchParams");
+    expect(page).toContain("initialImportId");
     expect(component).toContain("selectedImportId");
+    expect(component).toContain("initialImportId");
+    expect(component).toContain("router.push(`/leads?importId=");
     expect(component).toContain('aria-label="Upload"');
     expect(component).toContain("Upload overview");
   });

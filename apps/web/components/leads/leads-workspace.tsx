@@ -47,10 +47,18 @@ function unique(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))].sort();
 }
 
-export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: LeadImport[] }) {
+export function LeadsWorkspace({
+  leads,
+  imports,
+  initialImportId,
+}: {
+  leads: Lead[];
+  imports: LeadImport[];
+  initialImportId?: string;
+}) {
   const router = useRouter();
   const [search, setSearch] = useState("");
-  const [selectedImportId, setSelectedImportId] = useState("all");
+  const [selectedImportId, setSelectedImportId] = useState(initialImportId ?? "all");
   const [status, setStatus] = useState<LeadStatus | "all">("all");
   const [industry, setIndustry] = useState("all");
   const [location, setLocation] = useState("all");
@@ -327,8 +335,10 @@ export function LeadsWorkspace({ leads, imports }: { leads: Lead[]; imports: Lea
             className="select"
             value={selectedImportId}
             onChange={(event) => {
-              setSelectedImportId(event.target.value);
+              const importId = event.target.value;
+              setSelectedImportId(importId);
               clearSelection();
+              router.push(`/leads?importId=${encodeURIComponent(importId)}`);
             }}
             aria-label="Upload"
           >
