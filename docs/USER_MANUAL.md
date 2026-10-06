@@ -162,6 +162,19 @@ saving anything. The order is:
 The old “find first, verify later” path is legacy only. New **Find emails** runs should not save a
 fresh Apify or guessed address as campaign-ready unless Reoon says it is safe/valid.
 
+Actors and external services used by this flow:
+
+| Phase | Service / actor | Env/config | Input |
+|---|---|---|---|
+| Saved/derived company format | Warmailer pattern logic | `company_email_patterns` when present; otherwise existing verified leads | Lead name + company/domain pattern |
+| Guess verification | Reoon | `REOON_API_KEY`, `REOON_MODE=power` by default | Email candidate |
+| Bulk finder | Apify `snipercoder/bulk-linkedin-email-finder` | `APIFY_BULK_LINKEDIN_EMAIL_FINDER_ACTOR_ID` or `APIFY_BULK_ACTOR_ID`; default actor name `snipercoder/bulk-linkedin-email-finder`; `APIFY_BULK_INPUT_KEY=linkedin_url_or_ids` | Batch of LinkedIn URLs |
+| Bulk result verification | Reoon | `REOON_API_KEY`, `REOON_MODE` | Every email returned by bulk |
+| Same-company pattern guesses | Warmailer pattern logic | Learned from verified bulk/known emails only; free domains are ignored | Lead name + learned company domain/pattern |
+| One-by-one fallback | Apify `snipercoder/linkedin-email-finder` | `APIFY_LINKEDIN_EMAIL_FINDER_ACTOR_ID`; default actor ID `UMdANQyqx3b2JVuxg`; `APIFY_PRIMARY_INPUT_KEY=linkedin` | One LinkedIn URL per call |
+| One-by-one result verification | Reoon | `REOON_API_KEY`, `REOON_MODE` | Every email returned by fallback |
+| Legacy manual recovery fallback | Apify `x_guru/linkedin-email-Scraper-no-cookies` | `APIFY_LINKEDIN_EMAIL_SCRAPER_ACTOR_ID`; default actor ID `q3wko0Sbx6ZAAB2xf`; `APIFY_FALLBACK_INPUT_KEY=linkedinUrls` | LinkedIn URLs |
+
 ### Verifying emails
 
 The **Verify emails** button remains for older leads already marked **Email found**. New **Find
