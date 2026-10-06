@@ -32,6 +32,18 @@ describe("lead CSV import", () => {
     ]);
   });
 
+  it("keeps uploaded verified emails and LinkedIn URL aliases", () => {
+    const [lead] = parseLeadCsv(
+      "email,name,job_title,company,linkedin_url,location,reoon_status\nJane@Acme.com,Jane Doe,Owner,Acme,https://www.linkedin.com/in/jane/,NY,safe\n",
+    ).accepted;
+
+    expect(lead).toMatchObject({
+      email: "jane@acme.com",
+      email_status: "verified",
+      linkedin_url_normalized: "https://www.linkedin.com/in/jane",
+    });
+  });
+
   it("rejects only when the needed columns are missing", () => {
     expect(() => parseLeadCsv("name,company\nJane,Acme\n")).toThrow("CSV header must include name,link,company");
   });

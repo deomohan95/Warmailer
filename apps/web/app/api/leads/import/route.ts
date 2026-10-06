@@ -91,7 +91,9 @@ export async function POST(request: Request) {
           location: item.lead.location,
           employees: item.lead.employees,
           industry: item.lead.industry,
-          email_status: "not_enriched",
+          email: item.lead.email,
+          email_status: item.lead.email ? (item.lead.email_status ?? "found") : "not_enriched",
+          last_enriched_at: item.lead.email ? now : null,
           created_at: now,
           updated_at: now,
         });
