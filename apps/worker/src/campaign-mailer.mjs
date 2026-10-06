@@ -64,8 +64,9 @@ export async function sendDueCampaigns({ db, sendMail, decryptSecret, tracking, 
 
       mailbox.available_today = Number(mailbox.available_today) - 1;
       const sent = await sendCampaignLead({ db, sendMail, decryptSecret, campaign, step, steps, lead, mailbox, now, tracking });
-      summary[sent ? "sent" : "failed"]++;
-      if (sent) lastSentByMailbox.set(mailbox.id, now.toISOString());
+      if (sent === null) summary.skipped++;
+      else summary[sent ? "sent" : "failed"]++;
+      if (sent === true) lastSentByMailbox.set(mailbox.id, now.toISOString());
     }
 
     await db.completeCampaignIfDone(campaign.id);
@@ -90,7 +91,8 @@ function isMailboxReady(mailbox, lastSentByMailbox, delayMs, now) {
 
 async function sendCampaignLead({ db, sendMail, decryptSecret, campaign, step, steps, lead, mailbox, now, tracking }) {
   const nowIso = now.toISOString();
-  await db.markLeadQueued(lead.campaign_lead_id);
+  const claimed = db.claimLeadForSend ? await db.claimLeadForSend(lead) : (await db.markLeadQueued(lead.campaign_lead_id), true);
+  if (!claimed) return null;
 
   const subject = renderTemplate(step.subject, lead);
   const body = renderTemplate(step.body, lead);

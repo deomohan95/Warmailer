@@ -122,6 +122,30 @@ test("uses another campaign mailbox when the first mailbox is cooling down", asy
   assert.equal(sent[0].user, "second@example.com");
 });
 
+test("skips sending when another worker already claimed the campaign lead", async () => {
+  const sent = [];
+  const db = intervalCampaignDb({
+    mailboxes: [{ id: "mailbox-1", email_address: "sender@example.com", available_today: 1 }],
+  });
+  db.claimLeadForSend = async () => false;
+  db.markLeadQueued = async () => {
+    throw new Error("legacy queue claim should not run when atomic claim exists");
+  };
+
+  const result = await sendDueCampaigns({
+    db,
+    now: new Date("2026-08-13T07:00:00.000Z"),
+    decryptSecret: () => "app-password",
+    sendMail: async (payload) => {
+      sent.push(payload);
+      return { messageId: "<zoho-1@example.com>" };
+    },
+  });
+
+  assert.deepEqual(result, { campaigns: 1, sent: 0, skipped: 1, failed: 0 });
+  assert.deepEqual(sent, []);
+});
+
 
 test("sends the lead's due follow-up step and schedules the next saved delay", async () => {
   const sent = [];

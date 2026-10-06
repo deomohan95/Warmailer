@@ -162,7 +162,9 @@ function supabaseDb(config, fetchImpl) {
       const byId = new Map(leads.map((lead) => [lead.id, lead]));
       return dueRows.flatMap((row) => {
         const lead = byId.get(row.lead_id);
-        return lead?.email ? [{ ...lead, campaign_lead_id: row.id, lead_id: row.lead_id, next_step_order: row.next_step_order ?? 0, next_send_at: row.next_send_at, mailbox_id: row.mailbox_id }] : [];
+        return lead?.email
+          ? [{ ...lead, campaign_lead_id: row.id, lead_id: row.lead_id, status: row.status, next_step_order: row.next_step_order ?? 0, next_send_at: row.next_send_at, mailbox_id: row.mailbox_id }]
+          : [];
       });
     },
     getSendableLeads: async (campaignId, limit) => {
@@ -201,6 +203,16 @@ function supabaseDb(config, fetchImpl) {
       return Object.fromEntries(rows.filter((row, index) => rows.findIndex((item) => item.mailbox_id === row.mailbox_id) === index).map((row) => [row.mailbox_id, row.sent_at]));
     },
     markCampaignSending: (campaignId) => patch(`campaigns?id=eq.${campaignId}`, { status: "sending", updated_at: new Date().toISOString() }),
+    claimLeadForSend: async (lead) => {
+      const status = lead.status === "sent" ? "sent" : "selected";
+      const stepFilter = status === "sent" ? `&next_step_order=eq.${encodeURIComponent(lead.next_step_order ?? 0)}` : "";
+      const response = await request(`campaign_leads?id=eq.${encodeURIComponent(lead.campaign_lead_id)}&status=eq.${status}${stepFilter}`, {
+        method: "PATCH",
+        headers: { prefer: "return=representation" },
+        body: JSON.stringify({ status: "queued", updated_at: new Date().toISOString() }),
+      });
+      return (await response.json()).length > 0;
+    },
     markLeadQueued: (id) => patch(`campaign_leads?id=eq.${id}`, { status: "queued", updated_at: new Date().toISOString() }),
     markLeadSent: (id) => patch(`campaign_leads?id=eq.${id}`, { status: "sent", updated_at: new Date().toISOString() }),
     markLeadStepSent: (id, nextStepOrder, nextSendAt, mailboxId) =>

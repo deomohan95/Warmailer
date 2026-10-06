@@ -21,6 +21,9 @@ $fixedNames = @{
 $managedActorKeys = @(
     'APIFY_LINKEDIN_EMAIL_FINDER_ACTOR_ID',
     'APIFY_LINKEDIN_EMAIL_SCRAPER_ACTOR_ID',
+    'APIFY_BULK_ACTOR_ID',
+    'APIFY_BULK_ACTOR_NAME',
+    'APIFY_BULK_INPUT_KEY',
     'APIFY_PRIMARY_ACTOR_ID',
     'APIFY_PRIMARY_ACTOR_NAME',
     'APIFY_PRIMARY_INPUT_KEY',
@@ -62,6 +65,9 @@ foreach ($line in $lines) {
 
 $output.Add('APIFY_LINKEDIN_EMAIL_FINDER_ACTOR_ID=UMdANQyqx3b2JVuxg')
 $output.Add('APIFY_LINKEDIN_EMAIL_SCRAPER_ACTOR_ID=q3wko0Sbx6ZAAB2xf')
+$output.Add('APIFY_BULK_ACTOR_ID=snipercoder/bulk-linkedin-email-finder')
+$output.Add('APIFY_BULK_ACTOR_NAME=snipercoder/bulk-linkedin-email-finder')
+$output.Add('APIFY_BULK_INPUT_KEY=linkedin_url_or_ids')
 $output.Add('APIFY_PRIMARY_ACTOR_ID=UMdANQyqx3b2JVuxg')
 $output.Add('APIFY_PRIMARY_ACTOR_NAME=snipercoder/linkedin-email-finder')
 $output.Add('APIFY_PRIMARY_INPUT_KEY=linkedin')

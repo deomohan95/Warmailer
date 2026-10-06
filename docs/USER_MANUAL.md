@@ -137,28 +137,38 @@ processed:
 - **already have an email** — skipped, never re-enriched
 - **suppressed** — skipped
 
-**Find emails** acts only on the eligible group. The order of work:
+**Find emails** acts only on the eligible group. New runs verify addresses before saving them.
+The order of work:
 
-1. Apify scraper 1 runs one LinkedIn profile at a time:
+1. Warmailer first checks saved company email formats. If the company is known, it guesses the
+   address and verifies it with Reoon. Safe/valid guesses save directly as **Verified**.
+2. Apify bulk finder runs the still-missing LinkedIn URLs in one batch:
+   `snipercoder/bulk-linkedin-email-finder`, env key `APIFY_BULK_ACTOR_ID`, input key
+   `linkedin_url_or_ids`.
+3. Bulk-found emails are verified with Reoon before saving. Safe/valid results save as
+   **Verified** and teach Warmailer that company's email format.
+4. Leads still missing from the same company get a same-format guess, also Reoon-verified before
+   save.
+5. Leads still missing an email go to Apify scraper 2 one LinkedIn profile at a time:
    `snipercoder/linkedin-email-finder`, actor ID `UMdANQyqx3b2JVuxg`, env key
    `APIFY_LINKEDIN_EMAIL_FINDER_ACTOR_ID`.
-2. Leads still missing an email go to Apify scraper 2:
+6. One-by-one results are also verified with Reoon before saving. If no verified address is found,
+   the lead becomes **Not found**.
+7. Legacy fallback config remains available for manual recovery runs:
    `x_guru/linkedin-email-Scraper-no-cookies`, actor ID `q3wko0Sbx6ZAAB2xf`, env key
    `APIFY_LINKEDIN_EMAIL_SCRAPER_ACTOR_ID`, with work emails, personal emails and
    only-with-emails enabled.
-3. Found emails are saved as **Email found**. The table shows queued/processing/found states while
-   the run is still in process.
+8. The same lead/email candidate is only checked once with Reoon during a worker run, even if two
+   phases return the same address.
 
 ### Verifying emails
 
-After both Apify passes finish, select the **Email found** leads and click **Verify emails**.
-Warmailer checks those selected addresses with Reoon. Safe/valid Reoon results update the lead to
-**Verified**. Campaigns can only use **Verified** leads.
+The **Verify emails** button remains for older leads already marked **Email found**. New **Find
+emails** runs verify inside the worker and save directly as **Verified**. Campaigns can only use
+**Verified** leads.
 
 Results write back with the enrichment batch that produced them, so any address can be traced to
 its source.
-
-Nothing is called yet — no actor runs from this build.
 
 ### Lead statuses
 
