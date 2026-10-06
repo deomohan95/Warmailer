@@ -1,12 +1,10 @@
 # Warmailer — User Manual
 
-What the app is, what every screen does, and — just as importantly — what it does not do yet.
+What the app is, what every screen does, and how the production workers are expected to behave.
 
-**Status: frontend only.** Every screen is built and navigable, but nothing is connected to a
-backend. No email is sent, no lead is imported, no mailbox is connected, no setting is saved.
-Buttons that would cause one of those things are visible but disabled, and each says why. This is
-deliberate: the interface was built first so the flow could be checked before any real send
-could happen.
+**Status: live production app.** Leads import into Supabase, email finding runs through the worker,
+emails are verified with Reoon before new results are saved, campaigns send through connected
+mailboxes, and replies/bounces sync back into the inbox.
 
 ---
 
@@ -15,8 +13,9 @@ could happen.
 Warmailer runs cold outbound email for several client workspaces at once:
 
 1. Leads are imported from an Apollo CSV export.
-2. Missing email addresses are found through two Apify enrichment actors.
-3. Found email addresses are verified through Reoon before they can be used.
+2. Missing email addresses are found through saved company formats, the bulk Apify finder,
+   same-company pattern guesses, and the one-by-one Apify fallback.
+3. New found email addresses are verified through Reoon before they are saved for campaign use.
 4. Campaigns send through connected Zoho mailboxes.
 5. Replies from every mailbox land in one shared inbox.
 6. A mailbox's hard limits cap what any campaign can send through it.
@@ -137,35 +136,37 @@ processed:
 - **already have an email** — skipped, never re-enriched
 - **suppressed** — skipped
 
-**Find emails** acts only on the eligible group. New runs verify addresses before saving them.
-The order of work:
+**Find emails** acts only on the eligible group. Current runs verify inside the worker before
+saving anything. The order is:
 
-1. Warmailer first checks saved company email formats. If the company is known, it guesses the
-   address and verifies it with Reoon. Safe/valid guesses save directly as **Verified**.
-2. Apify bulk finder runs the still-missing LinkedIn URLs in one batch:
-   `snipercoder/bulk-linkedin-email-finder`, env key `APIFY_BULK_ACTOR_ID`, input key
-   `linkedin_url_or_ids`.
-3. Bulk-found emails are verified with Reoon before saving. Safe/valid results save as
-   **Verified** and teach Warmailer that company's email format.
-4. Leads still missing from the same company get a same-format guess, also Reoon-verified before
-   save.
-5. Leads still missing an email go to Apify scraper 2 one LinkedIn profile at a time:
-   `snipercoder/linkedin-email-finder`, actor ID `UMdANQyqx3b2JVuxg`, env key
-   `APIFY_LINKEDIN_EMAIL_FINDER_ACTOR_ID`.
-6. One-by-one results are also verified with Reoon before saving. If no verified address is found,
-   the lead becomes **Not found**.
-7. Legacy fallback config remains available for manual recovery runs:
-   `x_guru/linkedin-email-Scraper-no-cookies`, actor ID `q3wko0Sbx6ZAAB2xf`, env key
-   `APIFY_LINKEDIN_EMAIL_SCRAPER_ACTOR_ID`, with work emails, personal emails and
-   only-with-emails enabled.
-8. The same lead/email candidate is only checked once with Reoon during a worker run, even if two
-   phases return the same address.
+1. **Known company format first.** Warmailer checks saved/derived company email formats. If a
+   company already has a verified pattern, it guesses the new lead's email and sends that guess to
+   Reoon. Only safe/valid guesses are saved, directly as **Verified**.
+2. **Bulk Apify second.** Still-missing LinkedIn URLs go to
+   `snipercoder/bulk-linkedin-email-finder` (`APIFY_BULK_ACTOR_ID`, input key
+   `linkedin_url_or_ids`).
+3. **Verify bulk results.** Every bulk-found email is checked with Reoon before saving. Safe/valid
+   results save as **Verified** and teach Warmailer that company's email pattern.
+4. **Same-batch company guesses.** If bulk finds one verified address at a company, Warmailer uses
+   that format to guess emails for the other missing leads from the same company, then verifies
+   those guesses with Reoon before saving.
+5. **One-by-one fallback last.** Leads still missing an email go to
+   `snipercoder/linkedin-email-finder` (`APIFY_LINKEDIN_EMAIL_FINDER_ACTOR_ID`) one LinkedIn
+   profile at a time.
+6. **Verify fallback results.** One-by-one results also must pass Reoon before saving. If no safe
+   address is found, the lead stays empty and becomes **Not found** or **Failed**, depending on the
+   worker result.
+7. **No duplicate verification in one run.** The same lead/email candidate is checked with Reoon
+   only once per worker run, even if multiple phases return the same address.
+
+The old “find first, verify later” path is legacy only. New **Find emails** runs should not save a
+fresh Apify or guessed address as campaign-ready unless Reoon says it is safe/valid.
 
 ### Verifying emails
 
 The **Verify emails** button remains for older leads already marked **Email found**. New **Find
-emails** runs verify inside the worker and save directly as **Verified**. Campaigns can only use
-**Verified** leads.
+emails** runs verify inside the worker and save safe/valid results directly as **Verified**.
+Campaigns can only use **Verified** leads.
 
 Results write back with the enrichment batch that produced them, so any address can be traced to
 its source.
@@ -360,26 +361,20 @@ never a mystery. Automated tests cover rules 2 through 6 and 9 specifically.
 
 ---
 
-## What is not built
+## Known gaps / placeholders
 
-So that nothing here is mistaken for working:
+These are the remaining areas that should not be mistaken for complete production features:
 
 | Area | State |
 |---|---|
-| Supabase, Zoho, Apify connections | None. No external call is made anywhere. |
-| Authentication and sign-in | Not built. The frontend uses `MyMaidsPro` as the active workspace until Supabase membership is wired. |
-| CSV import | Interface only; no file is parsed or stored. |
-| Email enrichment | Interface only; no actor runs. |
-| Campaign sending | Interface only; launch, pause, resume and stop do nothing. |
-| Reply sync and replying | Interface only; the composer is disabled. |
-| Mailbox connection | Interface only; the add form saves nothing. |
-| Settings | Interface only; every control is disabled. |
-| Warmup | Not built, shown as Coming later. |
-| Open and click tracking | Not configured, which is why no open rate appears. |
+| Authentication and sign-in | Built for the current internal workspace flow; broader customer membership/onboarding is still limited. |
+| Email enrichment pattern table | Migration exists in the repo. Production can fall back to deriving patterns from existing verified leads if the table is not present. |
+| Warmup | Built separately from campaign sending; treat warmup operations as their own worker path. |
+| Open and click tracking | Open tracking is present, but open-rate reporting should still be treated as directional because image opens are not perfectly reliable. |
 | Global search, account menu | Placeholders in the top bar. |
 
-Screen layouts, navigation, empty states, the capacity rules and the launch-blocking logic are
-real and tested. Everything that would touch the outside world is not.
+Lead import, email finding, Reoon verification, campaign sending, reply/bounce sync, mailbox
+connection, and the capacity rules are live production paths.
 
 ---
 
