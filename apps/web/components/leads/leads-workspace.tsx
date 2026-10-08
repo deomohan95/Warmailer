@@ -1,12 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { IconLeads, IconSearch, IconUpload } from "@/components/icons";
 import { EmptyState, Notice, StatusPill } from "@/components/ui/primitives";
 import { LEAD_STATUS } from "@/lib/labels";
-import type { Lead, LeadImport, LeadStatus } from "@/lib/types";
+import type { LeadPage, LeadPageItem, LeadStats } from "@/lib/lead-pages";
+import type { LeadImport, LeadStatus } from "@/lib/types";
+
+const PAGE_SIZE = 100;
 
 const STATUS_ORDER: LeadStatus[] = [
   "not_enriched",
@@ -39,31 +42,32 @@ const STATS: readonly UploadStat[] = [
 ];
 
 /** Only leads without an email address are sent to enrichment. */
-function isEnrichable(lead: Lead): boolean {
+function isEnrichable(lead: LeadPageItem): boolean {
   return !lead.email && lead.emailStatus !== "suppressed";
 }
 
-function unique(values: string[]): string[] {
-  return [...new Set(values.filter(Boolean))].sort();
-}
-
 export function LeadsWorkspace({
-  leads,
+  initialPage,
   imports,
   initialImportId,
 }: {
-  leads: Lead[];
+  initialPage: LeadPage;
   imports: LeadImport[];
   initialImportId?: string;
 }) {
   const router = useRouter();
+  const [data, setData] = useState(initialPage);
+  const [stats, setStats] = useState<LeadStats | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const initialized = useRef(false);
   const [search, setSearch] = useState("");
   const [selectedImportId, setSelectedImportId] = useState(initialImportId ?? "all");
   const [status, setStatus] = useState<LeadStatus | "all">("all");
   const [industry, setIndustry] = useState("all");
   const [location, setLocation] = useState("all");
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [allFilteredSelected, setAllFilteredSelected] = useState(false);
+  const [selectedRecords, setSelectedRecords] = useState<Record<string, LeadPageItem>>({});
+  const [page, setPage] = useState(1);
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
@@ -74,39 +78,49 @@ export function LeadsWorkspace({
   const [verificationMessage, setVerificationMessage] = useState<string | null>(null);
   const [verificationError, setVerificationError] = useState<string | null>(null);
 
-  const industries = useMemo(() => unique(leads.map((lead) => lead.industry)), [leads]);
-  const locations = useMemo(() => unique(leads.map((lead) => lead.location)), [leads]);
-  const uploadLeads = useMemo(
-    () => (selectedImportId === "all" ? leads : leads.filter((lead) => lead.importIds?.includes(selectedImportId))),
-    [leads, selectedImportId],
-  );
+  useEffect(() => { setData(initialPage); }, [initialPage]);
+  useEffect(() => {
+    const controller = new AbortController();
+    setStats(null);
+    const params = new URLSearchParams({ statsOnly: "1" });
+    if (selectedImportId !== "all") params.set("importId", selectedImportId);
+    fetch(`/api/leads/query?${params}`, { signal: controller.signal })
+      .then((response) => { if (!response.ok) throw new Error("Could not load lead totals"); return response.json(); })
+      .then((result: LeadStats) => setStats(result))
+      .catch((error) => { if (!controller.signal.aborted) setLoadError(error instanceof Error ? error.message : "Could not load lead totals"); });
+    return () => controller.abort();
+  }, [selectedImportId]);
+  useEffect(() => {
+    if (!initialized.current) { initialized.current = true; return; }
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      setLoadError(null);
+      const params = new URLSearchParams({ page: String(page) });
+      if (search) params.set("search", search);
+      if (status !== "all") params.set("status", status);
+      if (industry) params.set("industry", industry);
+      if (location) params.set("location", location);
+      if (selectedImportId !== "all") params.set("importId", selectedImportId);
+      try {
+        const response = await fetch(`/api/leads/query?${params}`, { signal: controller.signal });
+        if (!response.ok) throw new Error(`Could not load leads (${response.status})`);
+        const next = (await response.json()) as LeadPage;
+        setData({ leads: next.leads, total: next.total, page: next.page });
+      } catch (error) {
+        if (!controller.signal.aborted) setLoadError(error instanceof Error ? error.message : "Could not load leads");
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }, search ? 250 : 0);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [page, search, status, industry, location, selectedImportId]);
+
   const selectedUpload = imports.find((item) => item.importId === selectedImportId);
-  const uploadStats = useMemo(
-    () => ({
-      total: uploadLeads.length,
-      found: uploadLeads.filter((lead) => lead.emailStatus === "email_found" || lead.emailStatus === "verified").length,
-      inFlight: uploadLeads.filter((lead) => lead.emailStatus === "queued" || lead.emailStatus === "processing").length,
-      notFound: uploadLeads.filter((lead) => lead.emailStatus === "not_found").length,
-      eligible: uploadLeads.filter(isEnrichable).length,
-    }),
-    [uploadLeads],
-  );
-
-  const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    return uploadLeads.filter((lead) => {
-      if (status !== "all" && lead.emailStatus !== status) return false;
-      if (industry !== "all" && lead.industry !== industry) return false;
-      if (location !== "all" && lead.location !== location) return false;
-      if (!needle) return true;
-      return [lead.name, lead.company, lead.jobTitle, lead.email ?? ""]
-        .join(" ")
-        .toLowerCase()
-        .includes(needle);
-    });
-  }, [uploadLeads, search, status, industry, location]);
-
-  const selection = allFilteredSelected ? filtered : filtered.filter((lead) => selectedIds.includes(lead.leadId));
+  const pageCount = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const pageLeads = data.leads;
+  const selection = Object.values(selectedRecords);
   const eligible = selection.filter(isEnrichable);
   const verifyReady = selection.filter((lead) => Boolean(lead.email) && lead.emailStatus === "email_found");
   const campaignReady = selection.filter(
@@ -116,22 +130,30 @@ export function LeadsWorkspace({
   const skippedSuppressed = selection.filter((lead) => lead.emailStatus === "suppressed");
 
   function toggleLead(leadId: string) {
-    setAllFilteredSelected(false);
-    setSelectedIds((current) =>
-      current.includes(leadId) ? current.filter((id) => id !== leadId) : [...current, leadId],
-    );
+    const lead = pageLeads.find((item) => item.leadId === leadId);
+    if (!lead) return;
+    setSelectedRecords((current) => {
+      const next = { ...current };
+      if (next[leadId]) delete next[leadId];
+      else next[leadId] = lead;
+      return next;
+    });
   }
 
   function togglePage() {
-    setAllFilteredSelected(false);
-    const pageIds = filtered.map((lead) => lead.leadId);
-    const allOnPage = pageIds.every((id) => selectedIds.includes(id));
-    setSelectedIds(allOnPage ? [] : pageIds);
+    setSelectedRecords((current) => {
+      const next = { ...current };
+      const allOnPage = pageLeads.every((lead) => Boolean(next[lead.leadId]));
+      for (const lead of pageLeads) {
+        if (allOnPage) delete next[lead.leadId];
+        else next[lead.leadId] = lead;
+      }
+      return next;
+    });
   }
 
   function clearSelection() {
-    setSelectedIds([]);
-    setAllFilteredSelected(false);
+    setSelectedRecords({});
   }
 
   async function importCsv(event: React.ChangeEvent<HTMLInputElement>) {
@@ -232,7 +254,7 @@ export function LeadsWorkspace({
     router.push(`/campaigns/new?leadIds=${encodeURIComponent(campaignReady.map((lead) => lead.leadId).join(","))}`);
   }
 
-  const pageChecked = filtered.length > 0 && filtered.every((lead) => selection.includes(lead));
+  const pageChecked = pageLeads.length > 0 && pageLeads.every((lead) => Boolean(selectedRecords[lead.leadId]));
 
   return (
     <>
@@ -312,7 +334,7 @@ export function LeadsWorkspace({
                   {stat.tone ? <span className={`stat-dot stat-dot-${stat.tone}`} aria-hidden /> : null}
                   {stat.label}
                 </dt>
-                <dd>{uploadStats[stat.key].toLocaleString()}</dd>
+                <dd>{stats ? stats[stat.key].toLocaleString() : "—"}</dd>
               </div>
             ))}
           </dl>
@@ -325,7 +347,7 @@ export function LeadsWorkspace({
               className="input"
               type="search"
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => { setSearch(event.target.value); setPage(1); clearSelection(); }}
               placeholder="Search name, company or job title"
               aria-label="Search leads"
             />
@@ -337,8 +359,9 @@ export function LeadsWorkspace({
             onChange={(event) => {
               const importId = event.target.value;
               setSelectedImportId(importId);
+              setPage(1);
               clearSelection();
-              router.push(`/leads?importId=${encodeURIComponent(importId)}`);
+              window.history.replaceState(null, "", importId === "all" ? "/leads" : `/leads?importId=${encodeURIComponent(importId)}`);
             }}
             aria-label="Upload"
           >
@@ -353,7 +376,7 @@ export function LeadsWorkspace({
           <select
             className="select"
             value={status}
-            onChange={(event) => setStatus(event.target.value as LeadStatus | "all")}
+            onChange={(event) => { setStatus(event.target.value as LeadStatus | "all"); setPage(1); clearSelection(); }}
             aria-label="Email status"
           >
             <option value="all">All email statuses</option>
@@ -364,33 +387,8 @@ export function LeadsWorkspace({
             ))}
           </select>
 
-          <select
-            className="select"
-            value={industry}
-            onChange={(event) => setIndustry(event.target.value)}
-            aria-label="Industry"
-          >
-            <option value="all">All industries</option>
-            {industries.map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
-
-          <select
-            className="select"
-            value={location}
-            onChange={(event) => setLocation(event.target.value)}
-            aria-label="Location"
-          >
-            <option value="all">All locations</option>
-            {locations.map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
+          <input className="input" value={industry} onChange={(event) => { setIndustry(event.target.value); setPage(1); clearSelection(); }} aria-label="Industry contains" placeholder="Industry contains" />
+          <input className="input" value={location} onChange={(event) => { setLocation(event.target.value); setPage(1); clearSelection(); }} aria-label="Location contains" placeholder="Location contains" />
         </div>
 
         {selection.length > 0 ? (
@@ -404,11 +402,6 @@ export function LeadsWorkspace({
               {skippedSuppressed.length.toLocaleString()} suppressed
             </span>
             <div className="spacer" />
-            {!allFilteredSelected && filtered.length > selection.length ? (
-              <button type="button" className="btn btn-ghost" onClick={() => setAllFilteredSelected(true)}>
-                Select all {filtered.length.toLocaleString()} filtered
-              </button>
-            ) : null}
             <button type="button" className="btn btn-ghost" onClick={clearSelection}>
               Clear
             </button>
@@ -431,7 +424,9 @@ export function LeadsWorkspace({
         ) : null}
 
         <div className="leads-table-pane">
-          {leads.length === 0 ? (
+          {loading ? <p className="subtle" role="status">Loading leads…</p> : null}
+          {loadError ? <Notice tone="warning">{loadError}</Notice> : null}
+          {stats?.total === 0 ? (
             <EmptyState
               icon={<IconLeads />}
               title="No leads imported yet"
@@ -443,9 +438,10 @@ export function LeadsWorkspace({
                 </label>
               }
             />
-          ) : filtered.length === 0 ? (
+          ) : data.total === 0 ? (
             <EmptyState small title="No leads match these filters" description="Adjust or clear the filters above." />
           ) : (
+              <div className="stack" style={{ gap: "var(--s-3)" }}>
               <table className="table">
                 <thead>
                   <tr>
@@ -466,12 +462,12 @@ export function LeadsWorkspace({
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((lead) => (
+                  {pageLeads.map((lead) => (
                     <tr key={lead.leadId}>
                       <td className="col-select">
                         <input
                           type="checkbox"
-                          checked={selection.includes(lead)}
+                          checked={Boolean(selectedRecords[lead.leadId])}
                           onChange={() => toggleLead(lead.leadId)}
                           aria-label={`Select ${lead.name}`}
                         />
@@ -494,6 +490,17 @@ export function LeadsWorkspace({
                   ))}
                 </tbody>
               </table>
+              <nav className="row" aria-label="Lead pages" style={{ justifyContent: "space-between" }}>
+                <span className="subtle">
+                  Showing {((currentPage - 1) * PAGE_SIZE + 1).toLocaleString()}–{Math.min(currentPage * PAGE_SIZE, data.total).toLocaleString()} of {data.total.toLocaleString()}
+                </span>
+                <div className="row">
+                  <button type="button" className="btn btn-secondary" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Previous</button>
+                  <span className="subtle">Page {currentPage} of {pageCount}</span>
+                  <button type="button" className="btn btn-secondary" disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>Next</button>
+                </div>
+              </nav>
+              </div>
           )}
         </div>
       </div>

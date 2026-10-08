@@ -2,7 +2,8 @@ import Link from "next/link";
 
 import { CampaignWizard } from "@/components/campaigns/campaign-wizard";
 import { PageHeader } from "@/components/ui/primitives";
-import { getActiveWorkspace, getLeads, getMailboxes } from "@/lib/backend-data";
+import { getActiveWorkspace, getMailboxes } from "@/lib/backend-data";
+import { getLeadChoicesByIds, getLeadPage } from "@/lib/lead-pages";
 
 export const metadata = { title: "New campaign · Warmailer" };
 
@@ -13,8 +14,9 @@ export default async function NewCampaignPage({ searchParams }: { searchParams?:
   const rawLeadIds = Array.isArray(params.leadIds) ? params.leadIds[0] : params.leadIds;
   const initialLeadIds = (rawLeadIds ?? "").split(",").filter(Boolean);
   const workspace = await getActiveWorkspace();
-  const [leads, mailboxes] = await Promise.all([
-    getLeads(workspace.workspaceId),
+  const [page, selectedLeads, mailboxes] = await Promise.all([
+    getLeadPage(workspace.workspaceId),
+    getLeadChoicesByIds(workspace.workspaceId, initialLeadIds),
     getMailboxes(workspace.workspaceId),
   ]);
 
@@ -30,7 +32,7 @@ export default async function NewCampaignPage({ searchParams }: { searchParams?:
         }
       />
 
-      <CampaignWizard leads={leads} mailboxes={mailboxes} initialLeadIds={initialLeadIds} />
+      <CampaignWizard initialPage={page} initialSelectedLeads={selectedLeads} mailboxes={mailboxes} />
     </main>
   );
 }

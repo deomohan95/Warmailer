@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { IconAlert, IconCheck, IconLeads, IconMailbox } from "@/components/icons";
 import { Card, CardHead, EmptyState, Meter, Notice, StatusPill } from "@/components/ui/primitives";
@@ -17,7 +17,8 @@ import {
   unresolvedVariables,
 } from "@/lib/capacity";
 import { formatSendingDays, LEAD_STATUS, MAILBOX_STATUS } from "@/lib/labels";
-import type { CampaignSchedule, Lead, Mailbox, SequenceStep } from "@/lib/types";
+import type { LeadPage, LeadPageItem } from "@/lib/lead-pages";
+import type { CampaignSchedule, Mailbox, SequenceStep } from "@/lib/types";
 
 const STEPS = [
   "Campaign basics",
@@ -54,41 +55,71 @@ const defaultSchedule: CampaignSchedule = {
 };
 
 export function CampaignWizard({
-  leads,
+  initialPage,
+  initialSelectedLeads,
   mailboxes,
-  initialLeadIds = [],
 }: {
-  leads: Lead[];
+  initialPage: LeadPage;
+  initialSelectedLeads: LeadPageItem[];
   mailboxes: Mailbox[];
-  initialLeadIds?: string[];
 }) {
   const router = useRouter();
-  const leadIdSet = useMemo(() => new Set(leads.map((lead) => lead.leadId)), [leads]);
-  const validInitialLeadIds = useMemo(
-    () => initialLeadIds.filter((leadId) => leadIdSet.has(leadId)),
-    [initialLeadIds, leadIdSet],
-  );
-  const [step, setStep] = useState(validInitialLeadIds.length > 0 ? 1 : 0);
+  const [step, setStep] = useState(initialSelectedLeads.length > 0 ? 1 : 0);
   const [name, setName] = useState("");
   const [timezone, setTimezone] = useState(TIMEZONES[0] as string);
-  const [leadIds, setLeadIds] = useState<string[]>(validInitialLeadIds);
+  const [selectedLeads, setSelectedLeads] = useState(initialSelectedLeads);
+  const [leadData, setLeadData] = useState(initialPage);
+  const [leadLoading, setLeadLoading] = useState(false);
+  const [leadLoadError, setLeadLoadError] = useState("");
+  const initialized = useRef(false);
+  const [leadSearch, setLeadSearch] = useState("");
+  const [leadPage, setLeadPage] = useState(1);
   const [mailboxIds, setMailboxIds] = useState<string[]>([]);
   const [sequence, setSequence] = useState<SequenceStep[]>(emptySequence);
   const [schedule, setSchedule] = useState<CampaignSchedule>(defaultSchedule);
   const [launching, setLaunching] = useState(false);
   const [launchError, setLaunchError] = useState("");
 
-  const selectedLeads = useMemo(
-    () => leads.filter((lead) => leadIds.includes(lead.leadId)),
-    [leads, leadIds],
-  );
-  const visibleLeads = useMemo(
-    () =>
-      validInitialLeadIds.length > 0
-        ? leads.filter((lead) => validInitialLeadIds.includes(lead.leadId))
-        : leads,
-    [leads, validInitialLeadIds],
-  );
+  useEffect(() => {
+    if (!initialized.current) { initialized.current = true; return; }
+    if (initialSelectedLeads.length > 0) return;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setLeadLoading(true);
+      setLeadLoadError("");
+      try {
+        const params = new URLSearchParams({ page: String(leadPage) });
+        if (leadSearch) params.set("search", leadSearch);
+        const response = await fetch(`/api/leads/query?${params}`, { signal: controller.signal });
+        if (!response.ok) throw new Error(`Could not load leads (${response.status})`);
+        setLeadData((await response.json()) as LeadPage);
+      } catch (error) {
+        if (!controller.signal.aborted) setLeadLoadError(error instanceof Error ? error.message : "Could not load leads");
+      } finally {
+        if (!controller.signal.aborted) setLeadLoading(false);
+      }
+    }, leadSearch ? 250 : 0);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [leadPage, leadSearch, initialSelectedLeads]);
+
+  const matchingLeads = useMemo(() => {
+    const needle = leadSearch.trim().toLowerCase();
+    return initialSelectedLeads.length > 0
+      ? initialSelectedLeads.filter((lead) => !needle || [lead.name, lead.company, lead.email ?? ""].join(" ").toLowerCase().includes(needle))
+      : leadData.leads;
+  }, [initialSelectedLeads, leadData.leads, leadSearch]);
+  const matchingCount = initialSelectedLeads.length > 0 ? matchingLeads.length : leadData.total;
+  const leadPageCount = Math.max(1, Math.ceil(matchingCount / 100));
+  const currentLeadPage = Math.min(leadPage, leadPageCount);
+  const pageLeads = initialSelectedLeads.length > 0
+    ? matchingLeads.slice((currentLeadPage - 1) * 100, currentLeadPage * 100)
+    : matchingLeads;
+
+  function toggleLead(lead: LeadPageItem) {
+    setSelectedLeads((current) => current.some((item) => item.leadId === lead.leadId)
+      ? current.filter((item) => item.leadId !== lead.leadId)
+      : [...current, lead]);
+  }
   const selectedMailboxes = useMemo(
     () => mailboxes.filter((mailbox) => mailboxIds.includes(mailbox.mailboxId)),
     [mailboxes, mailboxIds],
@@ -226,7 +257,7 @@ export function CampaignWizard({
             ) : null}
 
             {step === 1 ? (
-              leads.length === 0 ? (
+              leadData.total === 0 && initialSelectedLeads.length === 0 ? (
                 <EmptyState
                   icon={<IconLeads />}
                   title="No leads imported yet"
@@ -239,6 +270,16 @@ export function CampaignWizard({
                 />
               ) : (
                 <div className="stack" style={{ gap: "var(--s-4)" }}>
+                  {leadLoading ? <p className="subtle" role="status">Loading leads…</p> : null}
+                  {leadLoadError ? <Notice tone="warning">{leadLoadError}</Notice> : null}
+                  <input
+                    className="input"
+                    type="search"
+                    placeholder="Search leads by name, company, or email"
+                    aria-label="Search campaign leads"
+                    value={leadSearch}
+                    onChange={(event) => { setLeadSearch(event.target.value); setLeadPage(1); }}
+                  />
                   <div className="table-wrap">
                     <table className="table">
                       <thead>
@@ -253,13 +294,13 @@ export function CampaignWizard({
                         </tr>
                       </thead>
                       <tbody>
-                        {visibleLeads.map((lead) => (
+                        {pageLeads.map((lead) => (
                           <tr key={lead.leadId}>
                             <td className="col-select">
                               <input
                                 type="checkbox"
-                                checked={leadIds.includes(lead.leadId)}
-                                onChange={() => setLeadIds((current) => toggle(current, lead.leadId))}
+                                checked={selectedLeads.some((item) => item.leadId === lead.leadId)}
+                                onChange={() => toggleLead(lead)}
                                 aria-label={`Select ${lead.name}`}
                               />
                             </td>
@@ -274,6 +315,15 @@ export function CampaignWizard({
                       </tbody>
                     </table>
                   </div>
+
+                  <nav className="row" aria-label="Campaign lead pages" style={{ justifyContent: "space-between" }}>
+                    <span className="subtle">Showing {matchingCount ? (currentLeadPage - 1) * 100 + 1 : 0}–{Math.min(currentLeadPage * 100, matchingCount)} of {matchingCount.toLocaleString()}</span>
+                    <div className="row">
+                      <button type="button" className="btn btn-secondary" disabled={currentLeadPage === 1} onClick={() => setLeadPage(currentLeadPage - 1)}>Previous</button>
+                      <span className="subtle">Page {currentLeadPage} of {leadPageCount}</span>
+                      <button type="button" className="btn btn-secondary" disabled={currentLeadPage === leadPageCount} onClick={() => setLeadPage(currentLeadPage + 1)}>Next</button>
+                    </div>
+                  </nav>
 
                   <dl className="review-grid">
                     <dt>Selected</dt>

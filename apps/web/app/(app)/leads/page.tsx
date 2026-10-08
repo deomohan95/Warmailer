@@ -1,7 +1,8 @@
 import { IconUpload } from "@/components/icons";
 import { LeadsWorkspace } from "@/components/leads/leads-workspace";
 import { PageHeader } from "@/components/ui/primitives";
-import { getActiveWorkspace, getImports, getLeads } from "@/lib/backend-data";
+import { getActiveWorkspace, getImports } from "@/lib/backend-data";
+import { getLeadPage } from "@/lib/lead-pages";
 
 export const metadata = { title: "Leads · Warmailer" };
 
@@ -11,8 +12,9 @@ export default async function LeadsPage({ searchParams }: { searchParams?: Leads
   const params = searchParams ? await searchParams : {};
   const initialImportId = Array.isArray(params.importId) ? params.importId[0] : params.importId;
   const workspace = await getActiveWorkspace();
-  const [leads, leadImports] = await Promise.all([getLeads(workspace.workspaceId), getImports(workspace.workspaceId)]);
+  const leadImports = await getImports(workspace.workspaceId);
   const selectedImportId = leadImports.some((item) => item.importId === initialImportId) ? initialImportId : undefined;
+  const page = await getLeadPage(workspace.workspaceId, { importId: selectedImportId });
 
   return (
     <main className="page page-fit">
@@ -25,7 +27,12 @@ export default async function LeadsPage({ searchParams }: { searchParams?: Leads
           </label>
         }
       />
-      <LeadsWorkspace key={selectedImportId ?? "all"} leads={leads} imports={leadImports} initialImportId={selectedImportId} />
+      <LeadsWorkspace
+        key={selectedImportId ?? "all"}
+        initialPage={page}
+        imports={leadImports}
+        initialImportId={selectedImportId}
+      />
     </main>
   );
 }

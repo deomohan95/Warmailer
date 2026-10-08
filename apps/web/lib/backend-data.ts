@@ -628,7 +628,9 @@ export async function getDashboardData() {
 
 export async function getLeads(workspaceId: string) {
   const [rows, links] = await Promise.all([
-    restAll<LeadRow>(`lead_list?workspace_id=eq.${workspaceId}&select=*&order=created_at.desc`),
+    restAll<LeadRow>(
+      `lead_list?workspace_id=eq.${workspaceId}&select=lead_id,workspace_id,source_file,name,job_title,company,link,location,employees,industry,email,email_status,created_at,updated_at&order=created_at.desc`,
+    ),
     restAll<LeadImportLinkRow>(
       `lead_import_rows?workspace_id=eq.${workspaceId}&action=in.(inserted,updated)&select=lead_id,import_id`,
     ),
