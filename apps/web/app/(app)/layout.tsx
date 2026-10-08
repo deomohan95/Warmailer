@@ -1,9 +1,7 @@
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 
 import { AppShell } from "@/components/shell/app-shell";
 import { getActiveWorkspace } from "@/lib/backend-data";
-
-export const dynamic = "force-dynamic";
 
 /**
  * Session, profile and workspace membership are resolved once here when the
@@ -15,7 +13,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   let workspace;
   try {
     workspace = await getActiveWorkspace();
-  } catch {
+  } catch (error) {
+    unstable_rethrow(error);
     redirect("/login");
   }
   return <AppShell workspace={workspace}>{children}</AppShell>;

@@ -135,8 +135,8 @@ export function CampaignDetail({
                     : `${openCount} open event${openCount === 1 ? "" : "s"} recorded.`}
                 </Notice>
                 <p className="subtle" style={{ fontSize: 12.5 }}>
-                  Delivery, open, reply and bounce figures appear here once the mail worker records events. Nothing on
-                  this page is estimated.
+                  Delivery, open, reply and bounce figures come from recorded events. Blocked images and prefetch
+                  can affect recorded opens.
                 </p>
               </div>
             </Card>
@@ -154,7 +154,7 @@ export function CampaignDetail({
                 </button>
               </div>
               <p className="subtle" style={{ fontSize: 12.5 }}>
-                Controls are disabled until the mail worker is wired — nothing here reaches a mailbox yet.
+                Pause, resume and stop actions are not available from this page yet.
               </p>
             </div>
           </Card>

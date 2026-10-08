@@ -2,6 +2,8 @@
 
 What the app is, what every screen does, and how the production workers are expected to behave.
 
+**Code review date: 2026-10-06.** The live enrichment systemd service runs this repository at `/root/Warmailer`.
+
 **Status: live production app.** Leads import into Supabase, email finding runs through the worker,
 emails are verified with Reoon before new results are saved, campaigns send through connected
 mailboxes, and replies/bounces sync back into the inbox.
@@ -43,8 +45,8 @@ Then open <http://127.0.0.1:3000>. Other commands:
 
 ### Seeing populated screens
 
-Every screen defaults to its empty state, because inventing traffic numbers would make the app
-lie about a workspace that has not sent anything. To view the populated layouts, open
+Screens load records for the active workspace. A workspace without records shows empty states;
+the app does not invent traffic numbers. To view the populated layouts, open
 `apps/web/lib/demo.ts` and set:
 
 ```ts
@@ -67,8 +69,7 @@ Everything else is a nested flow reached from inside one of those six. Importing
 inside Leads; creating a campaign lives inside Campaigns; warmup lives inside Mailboxes; billing
 lives inside Settings. None of them get their own sidebar entry.
 
-The top bar carries the active workspace, a search box, a theme toggle and an account button.
-Search and the account menu are placeholders in this build.
+The top bar carries the active workspace, a disabled search box, a theme toggle and a logout button.
 
 Below 1024px the sidebar collapses behind a menu button. Every screen stays usable down to 820px,
 where two-column layouts fold to one.
@@ -86,24 +87,12 @@ have never chosen, the app follows your operating system setting.
 The state of the outbound system in one screen. It answers "what is set up, what can send, and
 what is stopping me".
 
-Four cards across the top show **Leads**, **Mailboxes**, **Campaigns** and **Inbox** — each either
-a count or a plain empty state (`No leads imported`, `No mailboxes connected`, `No active
-campaigns`, `No replies synced`), with a link into that module.
+The dashboard shows campaign activity from stored send, open, reply and bounce events, with
+campaign filtering. Open rate is labelled **estimated**: image blocking and prefetch can distort
+pixel-based opens. Mailbox capacity and launch blockers are calculated from connected mailboxes
+and workspace records. Empty workspaces show setup prompts rather than invented activity.
 
-Below them:
-
-- **Send capacity today** — the total sends available right now, with a bar per mailbox showing
-  how much of its daily hard limit is already used or reserved. With no mailboxes connected it
-  reads `Connect mailboxes to calculate send capacity`.
-- **Blocking a launch** — the concrete reasons you cannot start sending yet, such as
-  `Import leads before finding emails` or `Connect a mailbox before launching`.
-- **Sending activity** — send counts once campaigns run.
-
-You will not find an open rate, a reply rate or a deliverability score anywhere on this page. Open
-tracking is not configured, so no such number exists to show.
-
-Three buttons in the header jump to the things you would actually do next: **Import leads**,
-**Connect mailbox**, **Create campaign**.
+Setup prompts and links point to Leads, Mailboxes and Campaigns as appropriate.
 
 ---
 
@@ -137,7 +126,7 @@ processed:
 - **suppressed** — skipped
 
 **Find emails** acts only on the eligible group. Current runs verify inside the worker before
-saving anything. The order is:
+saving a newly found address. The order is:
 
 1. **Known company format first.** Warmailer checks saved/derived company email formats. If a
    company already has a verified pattern, it guesses the new lead's email and sends that guess to
@@ -162,6 +151,46 @@ saving anything. The order is:
 The old “find first, verify later” path is legacy only. New **Find emails** runs should not save a
 fresh Apify or guessed address as campaign-ready unless Reoon says it is safe/valid.
 
+### Using TryKitt's API manually
+
+`TRYKITT_API_KEY` is stored in the ignored `.env.local` file and is shown as an empty placeholder
+in `.env.example`. The key was checked with TryKitt's `GET /api/test-key` endpoint. Warmailer's
+**Find emails** and **Verify emails** buttons do not call TryKitt: the current worker uses Apify to
+find addresses and Reoon to verify them. A TryKitt result must not be written to a lead as
+**Verified** through an ad hoc database update; use the existing verification path or add a
+reviewed integration that maps TryKitt's response to Warmailer's status rules.
+
+For a manual TryKitt lookup, load the local environment in a shell at the repo root, then send a
+real-time request with the lead's full name, company email domain (or website), and optional
+LinkedIn URL. `customData` can hold your internal lead id so results can be matched back to a
+lead. Do not put an API key in request bodies or source files.
+
+```bash
+set -a; . ./.env.local; set +a
+curl -sS https://api.trykitt.ai/job/find_email \
+  -H "x-api-key: $TRYKITT_API_KEY" -H 'Content-Type: application/json' \
+  --data '{"fullName":"Example Person","domain":"example.com","linkedinStandardProfileURL":"https://www.linkedin.com/in/example-person","realtime":true,"customData":"internal-lead-id"}'
+```
+
+To check an existing candidate address through TryKitt directly:
+
+```bash
+curl -sS https://api.trykitt.ai/job/verify_email \
+  -H "x-api-key: $TRYKITT_API_KEY" -H 'Content-Type: application/json' \
+  --data '{"email":"person@example.com","realtime":true,"customData":"internal-lead-id"}'
+```
+
+TryKitt's published collection does not document example result bodies or which verification
+field Warmailer should treat as safe. Its field list says `website` is required while its find
+request example supplies `domain`; the example above follows the published request example.
+Check actual responses before mapping results into Warmailer. The default limit is 15 concurrent
+real-time requests per key; HTTP 402 can mean rate limiting or insufficient funds. These calls
+may consume TryKitt credits.
+
+References: [TryKitt API collection](https://help.trykitt.ai/en/collections/12464484-api-docs),
+[Postman endpoint reference](https://documenter.getpostman.com/view/479833/2s93m62NHf), and
+[rate limits](https://help.trykitt.ai/en/articles/11185667-api-rate-limits).
+
 Actors and external services used by this flow:
 
 | Phase | Service / actor | Env/config | Input |
@@ -179,7 +208,15 @@ Actors and external services used by this flow:
 
 The **Verify emails** button remains for older leads already marked **Email found**. New **Find
 emails** runs verify inside the worker and save safe/valid results directly as **Verified**.
-Campaigns can only use **Verified** leads.
+Campaigns can only use **Verified** leads. The manual button checks at most 500 selected
+leads per request and only processes leads with an address and **Email found** status. Rejected
+addresses stay unverified; request errors are reported separately.
+
+The shared Reoon check accepts `is_safe_to_send === true` or a `status` of `safe` or `valid`.
+Other responses do not promote a lead to **Verified**. Without `REOON_API_KEY`, enrichment
+verification returns unverified and saves no new candidate; the manual verification endpoint
+reports a configuration error. Candidate checks are cached by lead id and lowercase email
+within each worker run. This review checked code and automated tests, not a new paid Reoon run.
 
 Results write back with the enrichment batch that produced them, so any address can be traced to
 its source.
@@ -191,7 +228,7 @@ its source.
 | Not enriched | No enrichment attempted |
 | Queued | Waiting for an enrichment run |
 | Processing | Enrichment in progress |
-| Email found | Address found and stored |
+| Email found | Stored address awaiting verification; used by older/imported records |
 | Verified | Address found and passed Reoon verification |
 | Not found | Enrichment ran and found nothing |
 | Failed | Enrichment errored |
@@ -247,8 +284,8 @@ in plain language, and **Launch campaign** stays disabled until the list is empt
 
 Opening a campaign gives five tabs:
 
-- **Overview** — status, selections, live capacity, estimated days, schedule, and pause / resume /
-  stop controls.
+- **Overview** — status, selections, live capacity, estimated days, schedule, and disabled pause / resume /
+  stop controls. Campaign sending works, but these controls have no action wired yet.
 - **Leads** — the enrolled leads.
 - **Sequence** — the emails as they will be sent.
 - **Mailboxes** — the campaign's mailboxes and their current headroom.
@@ -259,7 +296,7 @@ Before any real sending exists, the results panel says exactly that:
 ```text
 No send events recorded yet.
 No replies synced yet.
-Open tracking not configured yet.
+No opens recorded yet.
 ```
 
 Capacity on this page is recalculated from the mailboxes as they stand right now, not from a
@@ -276,7 +313,8 @@ Filter tabs: **All · Unread · Replied · Archived**.
 
 Each thread opens with the message, then a context panel answering where it came from and what it
 belongs to — receiving mailbox, linked lead, linked campaign, message id — with links through to
-the campaign. A reply box sits below it, disabled, noting that replies are not wired to Zoho yet.
+the campaign. A reply box sits below it. **Send reply** sends through the receiving mailbox’s Zoho SMTP
+connection, records the outbound message/event, and marks the thread as replied.
 
 Empty state:
 
@@ -307,14 +345,18 @@ Mailbox statuses: **Not connected · Connected · Warming · Sending paused · E
 The form takes an email address, display name, Zoho app password, daily and hourly hard limits, a
 sending window and a timezone.
 
-**Your app password is write-only.** The mailbox record has no field to hold it, so it can never
-be read back into the browser — a saved mailbox shows only `App password configured`. In this
-build the form saves nothing at all, and the value you typed is discarded the moment you submit.
+**Your app password is write-only in the UI.** The API saves it encrypted with AES-256-GCM
+using `WORKER_ENCRYPTION_KEY`, bound to the mailbox id. Server-side sending decrypts it;
+the browser shows only `App password configured`. The form saves the mailbox and limits.
+Existing mailbox limits, display name, sending window and timezone can be edited.
 
 ### Warmup
 
-Marked **Coming later**. Warmup will raise a new mailbox's volume gradually before campaigns lean
-on it. The engine is not built, and no warmup score is shown, because nothing is measuring one.
+The **Warmup** tab lets you enable warmup and save daily limits, rampup, randomized daily
+counts, reply rates and fresh inbound percentages. It shows stored warmup activity and today’s
+target. A separate warmup worker uses Zoho mailboxes and connected Gmail seed accounts;
+seed accounts are managed under **Settings → Admin**. Configured workers and seed accounts
+are required for warmup activity.
 
 ---
 
@@ -325,14 +367,14 @@ is global.
 
 - **Workspace** — name and the workspace id used to scope every record
 - **Team and roles** — members and your own role; invites are not available yet
-- **Suppression** — addresses and domains that must never be contacted, plus auto-suppression on
-  an unsubscribe request
-- **Unsubscribe footer** — appended to every campaign email, kept out of the sequence editor so a
-  campaign cannot drop it
-- **Tracking domain** — a domain you own, for link and open tracking once tracking exists
+- **Suppression** — addresses and domains that must never be contacted, with disabled editing controls on this page
+- **Unsubscribe footer** — configuration placeholder; editing is disabled on this page
+- **Tracking domain** — custom domain configuration placeholder; signed open-pixel tracking already exists
 - **Billing** — placeholder
 
-All controls are disabled until the workspace tables are connected.
+Workspace, team invites, suppression, unsubscribe-footer and tracking-domain editing controls
+on this Settings page remain disabled. This does not mean the workspace tables or mail workers
+are disconnected. **Settings → Admin** has working warmup seed-account management.
 
 ---
 
@@ -383,8 +425,10 @@ These are the remaining areas that should not be mistaken for complete productio
 | Authentication and sign-in | Built for the current internal workspace flow; broader customer membership/onboarding is still limited. |
 | Email enrichment pattern table | Migration exists in the repo. Production can fall back to deriving patterns from existing verified leads if the table is not present. |
 | Warmup | Built separately from campaign sending; treat warmup operations as their own worker path. |
-| Open and click tracking | Open tracking is present, but open-rate reporting should still be treated as directional because image opens are not perfectly reliable. |
-| Global search, account menu | Placeholders in the top bar. |
+| Open and click tracking | Signed open-pixel tracking and estimated open-rate reporting exist. Custom tracking-domain editing is disabled; click tracking was not established by this review. |
+| Campaign controls | Pause/resume/stop buttons on campaign detail remain disabled; campaign sending is implemented. |
+| Settings editing | Workspace, invites, suppression, footer and tracking-domain controls remain disabled; warmup Admin is implemented. |
+| Global search | The top-bar search box is disabled; the account button logs out. |
 
 Lead import, email finding, Reoon verification, campaign sending, reply/bounce sync, mailbox
 connection, and the capacity rules are live production paths.

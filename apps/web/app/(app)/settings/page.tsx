@@ -37,7 +37,7 @@ export default async function SettingsPage() {
       />
 
       <Notice tone="accent" icon={<IconAlert />}>
-        No setting can be saved yet. These controls are disabled until the workspace tables are wired, so nothing on
+        These workspace settings cannot be edited from this page yet. Nothing on
         this page is stored.
       </Notice>
 
@@ -128,7 +128,7 @@ export default async function SettingsPage() {
 
           <Section
             title="Tracking domain"
-            description="A domain you own, used for link and open tracking once tracking is built."
+            description="A domain you own for tracking. Custom domain editing is not available here yet."
           >
             <div className="stack" style={{ gap: "var(--s-3)" }}>
               <div className="field">
@@ -136,7 +136,7 @@ export default async function SettingsPage() {
                 <input id="tracking-domain" className="input" placeholder="track.yourdomain.com" disabled />
               </div>
               <p className="subtle" style={{ fontSize: 12.5 }}>
-                Open tracking is not configured yet, which is why no open rate appears anywhere in the app.
+                Open tracking is available. The dashboard shows an estimated open rate; custom tracking-domain editing is not available here yet.
               </p>
             </div>
           </Section>

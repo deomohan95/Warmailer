@@ -57,6 +57,7 @@ describe("backend data mapping", () => {
   it("validates session cookies with the same Supabase key loader used by login", async () => {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://project.supabase.co");
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "publishable-key");
+    vi.stubEnv("SUPABASE_SECRET_KEY", "test-key");
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ id: "user_1", email: "owner@example.com" })));
 
@@ -64,7 +65,7 @@ describe("backend data mapping", () => {
     expect(fetch).toHaveBeenCalledWith(
       "https://project.supabase.co/auth/v1/user",
       expect.objectContaining({
-        headers: expect.objectContaining({ apikey: "publishable-key" }),
+        headers: expect.objectContaining({ apikey: "test-key" }),
       }),
     );
   });
@@ -129,6 +130,35 @@ describe("backend data mapping", () => {
     );
 
     await expect(getLeads("workspace_1")).resolves.toMatchObject([{ leadId: "lead_1", importIds: ["import_1"] }]);
+  });
+
+  it("loads large lead lists without waiting for each page in sequence", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://project.supabase.co");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key");
+    let activeLeadPages = 0;
+    let maxActiveLeadPages = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: string) => {
+      const url = new URL(input);
+      if (url.pathname.endsWith("/lead_import_rows")) return Response.json([]);
+      activeLeadPages++;
+      maxActiveLeadPages = Math.max(maxActiveLeadPages, activeLeadPages);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const offset = Number(url.searchParams.get("offset") ?? 0);
+      activeLeadPages--;
+      return Response.json(Array.from({ length: Math.max(0, Math.min(1000, 2500 - offset)) }, (_, index) => ({
+        lead_id: `lead_${offset + index}`,
+        workspace_id: "workspace_1",
+        name: "Example Lead",
+        email_status: "not_enriched",
+        created_at: "2026-08-12T00:00:00.000Z",
+        updated_at: "2026-08-12T00:00:00.000Z",
+      })));
+    }));
+
+    const leads = await getLeads("workspace_1");
+    expect(leads).toHaveLength(2500);
+    expect(leads[2499]?.leadId).toBe("lead_2499");
+    expect(maxActiveLeadPages).toBeGreaterThan(1);
   });
 
   it("maps mailbox capacity from the database view without recomputing fake counters", () => {

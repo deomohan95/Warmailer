@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { cookies } from "next/headers";
+import { unstable_rethrow } from "next/navigation";
 import { cache } from "react";
 
 import { ACCESS_COOKIE, authApiKey, supabaseAuthUrl, type AuthUser } from "./auth";
@@ -279,7 +280,8 @@ export function requireSupabaseAuthConfig(env: Env = process.env): SupabaseConfi
 async function cookieAccessToken(): Promise<string | undefined> {
   try {
     return (await cookies()).get(ACCESS_COOKIE)?.value;
-  } catch {
+  } catch (error) {
+    unstable_rethrow(error);
     return undefined;
   }
 }
@@ -303,13 +305,13 @@ export async function getAuthUser(accessToken?: string): Promise<AuthUser | null
   return user.id ? { id: user.id, email: user.email ?? "" } : null;
 }
 
-async function rest<T>(path: string): Promise<T> {
+async function rest<T>(path: string, fresh = false): Promise<T> {
   const { url, key } = requireSupabaseConfig();
   let response: Response;
 
   try {
     response = await fetch(`${url}/rest/v1/${path}`, {
-      cache: "no-store",
+      ...(fresh ? { cache: "no-store" as const } : { cache: "force-cache" as const, next: { revalidate: 15 } }),
       headers: {
         apikey: key,
         authorization: `Bearer ${key}`,
@@ -328,13 +330,15 @@ async function rest<T>(path: string): Promise<T> {
 }
 
 async function restAll<T>(path: string, pageSize = 1000): Promise<T[]> {
-  const rows: T[] = [];
+  const separator = path.includes("?") ? "&" : "?";
+  const pageAt = (offset: number) => rest<T[]>(`${path}${separator}limit=${pageSize}&offset=${offset}`);
+  const rows = await pageAt(0);
+  if (rows.length < pageSize) return rows;
 
-  for (let offset = 0; ; offset += pageSize) {
-    const separator = path.includes("?") ? "&" : "?";
-    const page = await rest<T[]>(`${path}${separator}limit=${pageSize}&offset=${offset}`);
-    rows.push(...page);
-    if (page.length < pageSize) return rows;
+  for (let offset = pageSize; ; offset += pageSize * 4) {
+    const pages = await Promise.all([0, 1, 2, 3].map((index) => pageAt(offset + index * pageSize)));
+    for (const page of pages) rows.push(...page);
+    if (pages.some((page) => page.length < pageSize)) return rows;
   }
 }
 
@@ -583,6 +587,7 @@ export const getActiveWorkspace = cache(async (): Promise<ActiveWorkspace> => {
 
   const [membership] = await rest<WorkspaceMemberRow[]>(
     `workspace_members?user_id=eq.${user.id}&select=role,workspaces(id,name)&limit=1`,
+    true,
   );
   const workspace = membership?.workspaces;
   if (!membership || !workspace) throw new Error("No workspace membership");
