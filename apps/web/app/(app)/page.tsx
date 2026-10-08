@@ -8,7 +8,7 @@ import { getDashboardData } from "@/lib/backend-data";
 export const metadata = { title: "Dashboard · Warmailer" };
 
 export default async function DashboardPage() {
-  const { overview, mailboxes, campaigns, activity, campaignStats, campaignDailyStats, inboxThreads, messages } = await getDashboardData();
+  const { overview, mailboxes, campaigns, activity, campaignStats, campaignDailyStats, inboxThreads } = await getDashboardData();
 
   return (
     <main className="page">
@@ -36,7 +36,6 @@ export default async function DashboardPage() {
         campaignStats={campaignStats}
         campaignDailyStats={campaignDailyStats}
         inboxThreads={inboxThreads}
-        messages={messages}
       />
     </main>
   );

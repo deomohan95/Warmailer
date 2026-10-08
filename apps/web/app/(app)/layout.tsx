@@ -1,7 +1,9 @@
 import { redirect, unstable_rethrow } from "next/navigation";
+import { Suspense } from "react";
 
 import { AppShell } from "@/components/shell/app-shell";
 import { getActiveWorkspace } from "@/lib/backend-data";
+import Loading from "./loading";
 
 /**
  * Session, profile and workspace membership are resolved once here when the
@@ -9,7 +11,11 @@ import { getActiveWorkspace } from "@/lib/backend-data";
  * duplicating it across proxy, layout and page is what made the previous owner
  * pages take one to two seconds per navigation.
  */
-export default async function AppLayout({ children }: { children: React.ReactNode }) {
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  return <Suspense fallback={<Loading />}><AuthenticatedApp>{children}</AuthenticatedApp></Suspense>;
+}
+
+async function AuthenticatedApp({ children }: { children: React.ReactNode }) {
   let workspace;
   try {
     workspace = await getActiveWorkspace();

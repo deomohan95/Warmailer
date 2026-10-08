@@ -602,7 +602,7 @@ export const getActiveWorkspace = cache(async (): Promise<ActiveWorkspace> => {
 
 export async function getDashboardData() {
   const workspace = await getActiveWorkspace();
-  const [overview] = await rest<
+  const overviewPromise = rest<
     {
       imported_count: number;
       email_found_count: number;
@@ -613,17 +613,17 @@ export async function getDashboardData() {
       unread_thread_count: number;
     }[]
   >(`dashboard_overview?workspace_id=eq.${workspace.workspaceId}&select=*&limit=1`);
-  const [mailboxes, campaigns, activity, campaignStats, campaignDailyStats, inboxThreads, messages] = await Promise.all([
+  const [overviewRows, mailboxes, campaigns, activity, campaignStats, campaignDailyStats, inboxThreads] = await Promise.all([
+    overviewPromise,
     getMailboxes(workspace.workspaceId),
     getCampaigns(workspace.workspaceId),
     getCampaignActivity(workspace.workspaceId),
     getCampaignStats(workspace.workspaceId),
     getCampaignDailyStats(workspace.workspaceId),
     getInboxThreads(workspace.workspaceId),
-    getInboxMessages(workspace.workspaceId),
   ]);
 
-  return { workspace, overview, mailboxes, campaigns, activity, campaignStats, campaignDailyStats, inboxThreads, messages };
+  return { workspace, overview: overviewRows[0], mailboxes, campaigns, activity, campaignStats, campaignDailyStats, inboxThreads };
 }
 
 export async function getLeads(workspaceId: string) {

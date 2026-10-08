@@ -153,7 +153,7 @@ describe("backend wiring", () => {
     expect(page).toContain("initialImportId");
     expect(component).toContain("selectedImportId");
     expect(component).toContain("initialImportId");
-    expect(component).toContain("router.push(`/leads?importId=");
+    expect(component).toContain("window.history.replaceState");
     expect(component).toContain('aria-label="Upload"');
     expect(component).toContain("Upload overview");
   });
@@ -176,9 +176,9 @@ describe("backend wiring", () => {
     expect(leads).toContain("/campaigns/new?leadIds=");
     expect(page).toContain("searchParams");
     expect(page).toContain("initialLeadIds");
-    expect(wizard).toContain("initialLeadIds");
-    expect(wizard).toContain("visibleLeads");
-    expect(wizard).toContain("validInitialLeadIds.length > 0");
+    expect(page).toContain("getLeadChoicesByIds");
+    expect(wizard).toContain("initialSelectedLeads");
+    expect(wizard).toContain("pageLeads");
   });
 
   it("helps campaign body copy use supported variables", async () => {
@@ -438,7 +438,6 @@ describe("inbox empty states", () => {
 
     expect(data).toContain("getCampaigns(workspace.workspaceId)");
     expect(data).toContain("getInboxThreads(workspace.workspaceId)");
-    expect(data).toContain("getInboxMessages(workspace.workspaceId)");
     expect(page).toContain("DashboardWorkspace");
     expect(component).toContain('aria-label="Campaign filter"');
     for (const label of ["Emails sent", "Opened", "Replied", "Bounced", "Reply funnel", "Needs your reply"]) {

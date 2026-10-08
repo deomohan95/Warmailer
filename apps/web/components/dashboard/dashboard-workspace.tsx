@@ -19,7 +19,7 @@ import { Card, CardHead, EmptyState, Meter, Notice, StatusPill } from "@/compone
 import { availableToday, campaignDailyCapacity, isSendable } from "@/lib/capacity";
 import { CAMPAIGN_STATUS, formatDateTime } from "@/lib/labels";
 import { dailySeries, formatRate, rate, type DayPoint } from "@/lib/metrics";
-import type { Campaign, CampaignActivity, CampaignDailyStats, CampaignStats, InboxMessage, InboxThread, Mailbox } from "@/lib/types";
+import type { Campaign, CampaignActivity, CampaignDailyStats, CampaignStats, InboxThread, Mailbox } from "@/lib/types";
 
 type Overview = {
   imported_count: number;
@@ -93,7 +93,6 @@ export function DashboardWorkspace({
   campaignStats,
   campaignDailyStats,
   inboxThreads,
-  messages,
 }: {
   overview?: Overview;
   mailboxes: Mailbox[];
@@ -102,7 +101,6 @@ export function DashboardWorkspace({
   campaignStats: CampaignStats[];
   campaignDailyStats: CampaignDailyStats[];
   inboxThreads: InboxThread[];
-  messages: InboxMessage[];
 }) {
   const [campaignId, setCampaignId] = useState("all");
   const selectedCampaign = campaigns.find((campaign) => campaign.campaignId === campaignId);
@@ -113,13 +111,12 @@ export function DashboardWorkspace({
   const filteredStats = campaignStats.filter(inScope);
   const filteredDailyStats = campaignDailyStats.filter(inScope);
   const filteredThreads = inboxThreads.filter(inScope);
-  const filteredMessages = messages.filter(inScope);
   const statsCounts = aggregateStats(filteredStats);
   const sent = filteredStats.length ? statsCounts.sent : eventCount(filteredActivity, "sent");
   const opened = filteredStats.length ? statsCounts.opened : eventCount(filteredActivity, "opened");
   const replied = filteredStats.length
     ? statsCounts.replied
-    : eventCount(filteredActivity, "replied") || filteredMessages.filter((message) => message.direction === "inbound").length;
+    : eventCount(filteredActivity, "replied");
   const bounced = filteredStats.length ? statsCounts.bounced : eventCount(filteredActivity, "bounced");
   const importedCount = overview?.imported_count ?? 0;
   const emailFoundCount = overview?.email_found_count ?? 0;
