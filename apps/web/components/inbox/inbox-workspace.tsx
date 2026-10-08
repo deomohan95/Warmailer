@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { IconInbox } from "@/components/icons";
 import { Card, EmptyState, StatusPill } from "@/components/ui/primitives";
@@ -63,6 +63,8 @@ export function InboxWorkspace({
   const [replyBody, setReplyBody] = useState("");
   const [replyStatus, setReplyStatus] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [trail, setTrail] = useState<{ key: string; messages: InboxMessage[]; error?: string } | null>(null);
+  const [trailRevision, setTrailRevision] = useState(0);
 
   const conversations = useMemo(() => buildConversations(threads, messages), [threads, messages]);
   const filteredConversations = useMemo(() => {
@@ -80,9 +82,34 @@ export function InboxWorkspace({
   }, [filteredConversations, folder, sortOrder]);
 
   const selected = visible.find((item) => item.key === selectedKey) ?? visible[0] ?? null;
+  const trailId = selected?.thread?.threadId ?? selected?.message?.messageId;
+  useEffect(() => {
+    if (!selected || !trailId) return;
+    const params = new URLSearchParams();
+    params.set(selected.thread ? "threadId" : "messageId", trailId);
+    if (selected.campaignId) params.set("campaignId", selected.campaignId);
+    if (selected.leadId) params.set("leadId", selected.leadId);
+    params.set("mailboxId", selected.mailboxId);
+    const controller = new AbortController();
+    fetch(`/api/inbox/messages?${params}`, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error("Could not load conversation");
+        return response.json() as Promise<InboxMessage[]>;
+      })
+      .then((rows) => {
+        if (!controller.signal.aborted) setTrail({ key: selected.key, messages: rows });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setTrail({ key: selected.key, messages: [], error: "Could not load conversation" });
+      });
+    return () => controller.abort();
+  }, [trailId, selected?.campaignId, selected?.leadId, selected?.mailboxId, trailRevision]);
+  const activeTrail = trail?.key === selected?.key ? trail : null;
   const mailbox = selected ? mailboxes.find((item) => item.mailboxId === selected.mailboxId) : undefined;
   const campaign = selected ? campaigns.find((item) => item.campaignId === selected.campaignId) : undefined;
-  const conversationMessages = selected ? messages.filter((message) => belongsToConversation(message, selected)) : [];
+  const conversationMessages = selected
+    ? activeTrail && !activeTrail.error ? activeTrail.messages : messages.filter((message) => belongsToConversation(message, selected))
+    : [];
 
   async function updateThreadStatus(status: ThreadStatus) {
     if (!selected?.thread) return;
@@ -235,6 +262,8 @@ export function InboxWorkspace({
               </header>
 
               <div className="message-trail">
+                {!activeTrail ? <p className="subtle" role="status">Loading conversation…</p> : null}
+                {activeTrail?.error ? <p className="subtle" role="alert">{activeTrail.error}</p> : null}
                 {conversationMessages.length === 0 ? (
                   <div className="message-body">
                     <span>{selected.preview}</span>
@@ -289,6 +318,7 @@ export function InboxWorkspace({
                             if (!response.ok) throw new Error(data.error ?? "Reply failed");
                             setReplyBody("");
                             setReplyStatus("Reply sent.");
+                            setTrailRevision((value) => value + 1);
                             router.refresh();
                           } catch (error) {
                             setReplyStatus(error instanceof Error ? error.message : "Reply failed");
@@ -336,8 +366,8 @@ function buildConversations(threads: InboxThread[], messages: InboxMessage[]): C
         status: thread.status,
         lastAt: latest ? messageTime(latest) : thread.lastMessageAt,
         lastDirection: latest?.direction ?? "inbound",
-        hasInbound: related.some((message) => message.direction === "inbound"),
-        hasOutbound: related.some((message) => message.direction === "outbound"),
+        hasInbound: true,
+        hasOutbound: Boolean(thread.campaignId) || related.some((message) => message.direction === "outbound"),
       };
     }),
     ...messages

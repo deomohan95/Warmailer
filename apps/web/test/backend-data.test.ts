@@ -7,6 +7,8 @@ import {
   getCampaignDailyStats,
   getCampaignStats,
   getInboxMessages,
+  getInboxMessagePreviews,
+  getInboxMessageTrail,
   getLeads,
   getMailboxes,
   mapCampaignActivityRow,
@@ -76,6 +78,34 @@ describe("backend data mapping", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
 
     await expect(getMailboxes("workspace_1")).resolves.toEqual([]);
+  });
+
+  it("loads recent inbox previews without transferring full message bodies", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://project.supabase.co");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json([])));
+
+    await expect(getInboxMessagePreviews("workspace_1")).resolves.toEqual([]);
+    const url = String(vi.mocked(fetch).mock.calls[0][0]);
+    expect(url).toContain("order=created_at.desc");
+    expect(url).toContain("limit=100");
+    expect(url).toContain("body_preview");
+    expect(url).not.toContain("body_text");
+  });
+
+  it("loads one conversation's full trail within its workspace", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://project.supabase.co");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-key");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json([])));
+
+    await getInboxMessageTrail("workspace_1", {
+      threadId: "thread_1", campaignId: "campaign_1", leadId: "lead_1", mailboxId: "mailbox_1",
+    });
+    const query = new URL(String(vi.mocked(fetch).mock.calls[0][0])).searchParams;
+    expect(query.get("workspace_id")).toBe("eq.workspace_1");
+    expect(query.get("or")).toContain("thread_id.eq.thread_1");
+    expect(query.get("or")).toContain("campaign_id.eq.campaign_1");
+    expect(query.get("order")).toBe("created_at.asc");
   });
 
   it("maps database lead status to the frontend status label contract", () => {

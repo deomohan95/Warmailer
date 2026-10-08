@@ -412,7 +412,8 @@ describe("inbox empty states", () => {
     const page = await source("app/(app)/inbox/page.tsx");
     const component = await source("components/inbox/inbox-workspace.tsx");
 
-    expect(page).toContain("getInboxMessages");
+    expect(page).toContain("getInboxMessagePreviews");
+    expect(component).toContain("/api/inbox/messages?");
     expect(page).toContain("getCampaigns");
     expect(component).toContain("folder");
     expect(component).toContain("Sent");

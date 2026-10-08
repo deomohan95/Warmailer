@@ -1,6 +1,6 @@
 import { InboxWorkspace } from "@/components/inbox/inbox-workspace";
 import { PageHeader } from "@/components/ui/primitives";
-import { getActiveWorkspace, getCampaigns, getInboxMessages, getInboxThreads, getMailboxes } from "@/lib/backend-data";
+import { getActiveWorkspace, getCampaigns, getInboxMessagePreviews, getInboxThreads, getMailboxes } from "@/lib/backend-data";
 
 export const metadata = { title: "Inbox · Warmailer" };
 
@@ -12,7 +12,7 @@ export default async function InboxPage({ searchParams }: { searchParams?: Inbox
   const workspace = await getActiveWorkspace();
   const [threads, messages, mailboxes, campaigns] = await Promise.all([
     getInboxThreads(workspace.workspaceId),
-    getInboxMessages(workspace.workspaceId),
+    getInboxMessagePreviews(workspace.workspaceId),
     getMailboxes(workspace.workspaceId),
     getCampaigns(workspace.workspaceId),
   ]);

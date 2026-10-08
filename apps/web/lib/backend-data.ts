@@ -574,7 +574,7 @@ export function mapInboxMessageRow(row: InboxMessageRow): InboxMessage {
     updatedAt: row.received_at ?? row.sent_at ?? row.created_at,
     direction: row.direction,
     subject: row.subject,
-    bodyText: row.body_text,
+    bodyText: row.body_text ?? "",
     bodyPreview: row.body_preview,
     sentAt: row.sent_at ?? undefined,
     receivedAt: row.received_at ?? undefined,
@@ -738,4 +738,35 @@ export async function getInboxMessages(workspaceId: string) {
     `messages?workspace_id=eq.${workspaceId}&select=*&order=created_at.asc&limit=1000`,
   );
   return rows.map(mapInboxMessageRow);
+}
+
+export async function getInboxMessagePreviews(workspaceId: string) {
+  const rows = await rest<InboxMessageRow[]>(
+    `messages?workspace_id=eq.${workspaceId}&select=id,workspace_id,thread_id,campaign_id,lead_id,mailbox_id,direction,subject,body_preview,sent_at,received_at,created_at&order=created_at.desc&limit=100`,
+    true,
+  );
+  return rows.map(mapInboxMessageRow);
+}
+
+export async function getInboxMessageTrail(
+  workspaceId: string,
+  selection: { threadId?: string; messageId?: string; campaignId?: string; leadId?: string; mailboxId?: string },
+) {
+  const query = new URLSearchParams({
+    workspace_id: `eq.${workspaceId}`,
+    select: "*",
+    order: "created_at.asc",
+    limit: "1000",
+  });
+  if (selection.messageId) {
+    query.set("id", `eq.${selection.messageId}`);
+  } else if (selection.threadId) {
+    const { threadId, campaignId, leadId, mailboxId } = selection;
+    query.set("or", campaignId && leadId && mailboxId
+      ? `(thread_id.eq.${threadId},and(campaign_id.eq.${campaignId},lead_id.eq.${leadId},mailbox_id.eq.${mailboxId}))`
+      : `(thread_id.eq.${threadId})`);
+  } else {
+    return [];
+  }
+  return (await rest<InboxMessageRow[]>(`messages?${query}`, true)).map(mapInboxMessageRow);
 }
