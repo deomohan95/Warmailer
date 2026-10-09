@@ -86,7 +86,7 @@ describe("backend data mapping", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json([])));
 
     await expect(getInboxMessagePreviews("workspace_1")).resolves.toEqual([]);
-    const url = String(vi.mocked(fetch).mock.calls[0][0]);
+    const url = String(vi.mocked(fetch).mock.calls[0]![0]);
     expect(url).toContain("order=created_at.desc");
     expect(url).toContain("limit=100");
     expect(url).toContain("body_preview");
@@ -101,7 +101,7 @@ describe("backend data mapping", () => {
     await getInboxMessageTrail("workspace_1", {
       threadId: "thread_1", campaignId: "campaign_1", leadId: "lead_1", mailboxId: "mailbox_1",
     });
-    const query = new URL(String(vi.mocked(fetch).mock.calls[0][0])).searchParams;
+    const query = new URL(String(vi.mocked(fetch).mock.calls[0]![0])).searchParams;
     expect(query.get("workspace_id")).toBe("eq.workspace_1");
     expect(query.get("or")).toContain("thread_id.eq.thread_1");
     expect(query.get("or")).toContain("campaign_id.eq.campaign_1");

@@ -1,0 +1,14 @@
+import { envValue } from "../../../../lib/backend-data";
+
+export function loadWarmupConfig(env: Record<string, string | undefined> = process.env) {
+  return {
+    supabaseUrl: envValue("NEXT_PUBLIC_SUPABASE_URL", env)?.replace(/\/$/, ""),
+    supabaseKey: envValue("SUPABASE_SECRET_KEY", env) ?? envValue("SUPABASE_SERVICE_ROLE_KEY", env),
+    encryptionKey: Buffer.from(envValue("WORKER_ENCRYPTION_KEY", env) ?? "", "base64"),
+    composioApiKey: envValue("COMPOSIO_API_KEY", env) ?? envValue("Composio_api_key", env),
+    smtpHost: envValue("ZOHO_SMTP_HOST", env) ?? "smtp.zoho.com",
+    smtpPort: Number(envValue("ZOHO_SMTP_PORT", env) ?? 465),
+    imapHost: envValue("ZOHO_IMAP_HOST", env) ?? "imap.zoho.com",
+    imapPort: Number(envValue("ZOHO_IMAP_PORT", env) ?? 993),
+  };
+}

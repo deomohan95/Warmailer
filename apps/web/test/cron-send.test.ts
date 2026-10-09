@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { GET, loadSendConfig } from "../app/api/cron/send/route";
-import { triggerImmediateSend } from "../app/api/campaigns/route";
+import { triggerImmediateSend } from "../app/api/campaigns/trigger";
+import { loadSendConfig } from "../app/api/cron/send/config";
+import { GET } from "../app/api/cron/send/route";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -57,8 +58,8 @@ describe("cron warmup route", () => {
 
   it("loads warmup composio config without exposing it to the browser", async () => {
     vi.stubEnv("COMPOSIO_API_KEY", "composio-secret");
-    const mod = await import("../app/api/cron/warmup/route");
+    const { loadWarmupConfig } = await import("../app/api/cron/warmup/config");
 
-    expect(mod.loadWarmupConfig().composioApiKey).toBe("composio-secret");
+    expect(loadWarmupConfig().composioApiKey).toBe("composio-secret");
   });
 });

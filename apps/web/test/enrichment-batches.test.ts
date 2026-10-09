@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { enrichmentLeadLookupPaths, triggerImmediateEnrichment } from "../app/api/enrichment-batches/route";
-import { verificationCandidates } from "../app/api/email-verification/route";
+import { enrichmentLeadLookupPaths, triggerImmediateEnrichment } from "../app/api/enrichment-batches/helpers";
+import { verificationCandidates } from "../app/api/email-verification/candidates";
 
 describe("enrichment batches", () => {
   it("schedules the enrichment worker immediately", async () => {

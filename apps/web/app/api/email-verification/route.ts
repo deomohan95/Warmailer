@@ -3,15 +3,10 @@ import { NextResponse } from "next/server";
 
 import { verifyEmailWithReoon } from "../../../../worker/src/enrichment-worker.mjs";
 import { envValue, getActiveWorkspace } from "../../../lib/backend-data";
+import { verificationCandidates, type VerificationLeadRow } from "./candidates";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
-
-type VerificationLeadRow = {
-  id: string;
-  email: string | null;
-  email_status: string;
-};
 
 export async function POST(request: Request) {
   try {
@@ -67,10 +62,6 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : "Email verification failed";
     return NextResponse.json({ error: message }, { status: message.includes("Missing") ? 500 : 400 });
   }
-}
-
-export function verificationCandidates(leads: VerificationLeadRow[]) {
-  return leads.filter((lead) => Boolean(lead.email) && lead.email_status === "found");
 }
 
 function validateLeadIds(value: unknown): string[] {

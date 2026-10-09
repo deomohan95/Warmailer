@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import { revalidatePath } from "next/cache";
-import { after, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
-import { processQueuedEnrichment } from "../../../../worker/src/enrichment-worker.mjs";
 import { envValue, getActiveWorkspace } from "../../../lib/backend-data";
+import { enrichmentLeadLookupPaths, triggerImmediateEnrichment } from "./helpers";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -15,9 +15,6 @@ type LeadRow = {
   email_status: string;
   linkedin_url_normalized: string | null;
 };
-
-type EnrichmentRunner = () => Promise<unknown>;
-type EnrichmentScheduler = (task: () => Promise<unknown>) => void;
 
 export async function POST(request: Request) {
   try {
@@ -70,23 +67,6 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : "Enrichment batch failed";
     return NextResponse.json({ error: message }, { status: message.includes("Missing") ? 500 : 400 });
   }
-}
-
-export function triggerImmediateEnrichment(run: EnrichmentRunner = processQueuedEnrichment, schedule: EnrichmentScheduler = after) {
-  schedule(async () => {
-    try {
-      await run();
-    } catch (error) {
-      console.error("Immediate enrichment failed", error);
-    }
-  });
-}
-
-export function enrichmentLeadLookupPaths(workspaceId: string, leadIds: string[], chunkSize = 100) {
-  return chunked(leadIds, chunkSize).map(
-    (ids) =>
-      `all_leads_mmp?workspace_id=eq.${workspaceId}&id=in.(${ids.map(encodeURIComponent).join(",")})&select=id,email,email_status,linkedin_url_normalized`,
-  );
 }
 
 async function getEnrichmentLeads(workspaceId: string, leadIds: string[]) {
