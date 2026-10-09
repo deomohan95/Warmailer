@@ -83,8 +83,8 @@ export async function getLeadPage(workspaceId: string, filters: LeadFilters = {}
   }
   const search = filters.search?.replace(/[(),*%]/g, " ").trim();
   if (search) query.set("or", `(name.ilike.*${search}*,company.ilike.*${search}*,job_title.ilike.*${search}*,email.ilike.*${search}*)`);
-  if (filters.industry) query.set("industry", `ilike.*${filters.industry.replace(/[*%]/g, "")}*`);
-  if (filters.location) query.set("location", `ilike.*${filters.location.replace(/[*%]/g, "")}*`);
+  if (filters.industry && filters.industry !== "all") query.set("industry", `ilike.*${filters.industry.replace(/[*%]/g, "")}*`);
+  if (filters.location && filters.location !== "all") query.set("location", `ilike.*${filters.location.replace(/[*%]/g, "")}*`);
 
   const response = await queryLeads(query);
   return { leads: ((await response.json()) as Row[]).map(mapRow), total: count(response), page: currentPage };

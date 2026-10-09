@@ -99,8 +99,8 @@ export function LeadsWorkspace({
       const params = new URLSearchParams({ page: String(page) });
       if (search) params.set("search", search);
       if (status !== "all") params.set("status", status);
-      if (industry) params.set("industry", industry);
-      if (location) params.set("location", location);
+      if (industry && industry !== "all") params.set("industry", industry);
+      if (location && location !== "all") params.set("location", location);
       if (selectedImportId !== "all") params.set("importId", selectedImportId);
       try {
         const response = await fetch(`/api/leads/query?${params}`, { signal: controller.signal });
